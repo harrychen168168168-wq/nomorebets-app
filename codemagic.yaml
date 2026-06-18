@@ -1,0 +1,61 @@
+workflows:
+  ios-release:
+    name: NoMoreBets iOS Release
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+
+    environment:
+      node: 22
+      xcode: latest
+      cocoapods: default
+      vars:
+        EXPO_NO_TELEMETRY: "1"
+      ios_signing:
+        provisioning_profiles:
+          - "NoMoreBets_AppStore_Valid"
+        certificates:
+          - "Nassau Connect"
+
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Prebuild iOS project
+        script: |
+          npx expo prebuild --platform ios --clean
+
+      - name: Install CocoaPods
+        script: |
+          cd ios
+          pod install
+
+      - name: Set up iOS code signing
+        script: |
+          xcode-project use-profiles
+
+      - name: Set iOS version and build number
+        script: |
+          cd ios
+          agvtool new-marketing-version 1.1.0
+          agvtool new-version -all 3
+
+      - name: Build IPA
+        script: |
+          IOS_WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -n 1)
+          IOS_SCHEME=$(xcodebuild -list -workspace "$IOS_WORKSPACE" | sed -n '/Schemes:/,$p' | tail -n +2 | sed '/^[[:space:]]*$/d' | head -n 1 | xargs)
+          echo "Workspace: $IOS_WORKSPACE"
+          echo "Scheme: $IOS_SCHEME"
+          xcode-project build-ipa \
+            --workspace "$IOS_WORKSPACE" \
+            --scheme "$IOS_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
