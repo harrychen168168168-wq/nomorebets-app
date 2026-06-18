@@ -235,7 +235,7 @@ export default function HomePage() {
         <Text style={styles.encourageTitle}>🌟 你知道吗？</Text>
         <Text style={styles.encourageText}>
           {streak >= 30
-            ? `坚持${streak}天了！你的大脑已经在恢复中，冲动越来越少，这是科学证明的事实。继续走下去。`
+            ? `坚持${streak}天了！很多人在持续远离赌博后，会感觉冲动逐渐变少、生活慢慢稳定。继续走下去。`
             : streak >= 7
             ? `坚持${streak}天了！这段时间你的大脑正在慢慢恢复正常的多巴胺分泌，冲动会越来越少。`
             : streak >= 1

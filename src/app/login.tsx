@@ -1,37 +1,144 @@
 import { useAuth } from '@/auth';
-import { PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
-import { useState } from 'react';
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-export default function LoginScreen() {
-  const { signInWithEmail, continueAsGuest } = useAuth();
-  const [email, setEmail] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [loading, setLoading] = useState(false);
+WebBrowser.maybeCompleteAuthSession();
 
-  async function handleEmailLogin() {
+type AuthMode = 'login' | 'register';
+
+export default function LoginScreen() {
+  const { registerWithEmail, signInWithEmailPassword, signInWithApple, signInWithGoogle, continueAsGuest } = useAuth();
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [loadingAction, setLoadingAction] = useState('');
+
+  const googleConfigured = Platform.OS === 'web' ? !!GOOGLE_WEB_CLIENT_ID : !!(GOOGLE_IOS_CLIENT_ID || GOOGLE_WEB_CLIENT_ID);
+  const googlePlaceholderClientId = 'disabled-google-login.apps.googleusercontent.com';
+  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
+    iosClientId: GOOGLE_IOS_CLIENT_ID || googlePlaceholderClientId,
+    webClientId: GOOGLE_WEB_CLIENT_ID || googlePlaceholderClientId,
+  });
+
+  const loading = loadingAction !== '';
+
+  useEffect(() => {
+    const finishGoogleLogin = async () => {
+      if (googleResponse?.type !== 'success') return;
+      const accessToken = googleResponse.authentication?.accessToken;
+      if (!accessToken) {
+        Alert.alert('Google 登录失败', '没有收到 Google 登录凭证，请稍后重试。');
+        return;
+      }
+      try {
+        setLoadingAction('google');
+        const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!profileResponse.ok) throw new Error('profile failed');
+        const profile = await profileResponse.json();
+        await signInWithGoogle({
+          providerUserId: String(profile.sub || profile.email || ''),
+          email: profile.email,
+          displayName: profile.name,
+        });
+      } catch {
+        Alert.alert('Google 登录失败', '暂时无法读取 Google 账号信息，请稍后重试。');
+      } finally {
+        setLoadingAction('');
+      }
+    };
+    finishGoogleLogin();
+  }, [googleResponse, signInWithGoogle]);
+
+  const primaryLabel = useMemo(() => authMode === 'login' ? '邮箱登录' : '注册邮箱账号', [authMode]);
+
+  async function handleEmailAuth() {
     if (!email.trim()) {
-      Alert.alert('请输入邮箱', '登录后可以保存记录、恢复会员状态，并为以后换手机同步做准备。');
+      Alert.alert('请输入邮箱', '邮箱会用来绑定本机账号和会员状态。');
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert('请输入密码', '密码至少需要 6 位。');
       return;
     }
     try {
-      setLoading(true);
-      await signInWithEmail(email, displayName);
+      setLoadingAction('email');
+      if (authMode === 'login') {
+        await signInWithEmailPassword(email, password);
+      } else {
+        await registerWithEmail(email, password, displayName);
+      }
     } catch (error: any) {
-      Alert.alert('登录失败', error?.message || '请检查邮箱后重试');
+      Alert.alert(authMode === 'login' ? '登录失败' : '注册失败', error?.message || '请检查后重试');
     } finally {
-      setLoading(false);
+      setLoadingAction('');
+    }
+  }
+
+  async function handleAppleLogin() {
+    if (Platform.OS !== 'ios') {
+      Alert.alert('Apple 登录', 'Apple 登录需要在 iOS 真机、TestFlight 或 App Store 环境中使用。');
+      return;
+    }
+    try {
+      const available = await AppleAuthentication.isAvailableAsync();
+      if (!available) {
+        Alert.alert('Apple 登录不可用', '当前设备暂时不支持 Sign in with Apple。');
+        return;
+      }
+      setLoadingAction('apple');
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      const nameParts = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean);
+      await signInWithApple({
+        providerUserId: credential.user,
+        email: credential.email,
+        displayName: nameParts.join(' '),
+      });
+    } catch (error: any) {
+      if (error?.code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('Apple 登录失败', '请稍后再试。');
+      }
+    } finally {
+      setLoadingAction('');
+    }
+  }
+
+  async function handleGoogleLogin() {
+    if (!googleConfigured) {
+      Alert.alert('Google 登录未配置', '请先在 src/config.ts 填入 GOOGLE_IOS_CLIENT_ID 或 GOOGLE_WEB_CLIENT_ID。');
+      return;
+    }
+    if (!googleRequest) {
+      Alert.alert('Google 登录暂不可用', '登录配置仍在准备中，请稍后再试。');
+      return;
+    }
+    try {
+      setLoadingAction('google');
+      await promptGoogleAsync();
+    } finally {
+      setLoadingAction('');
     }
   }
 
   async function handleGuest() {
     try {
-      setLoading(true);
+      setLoadingAction('guest');
       await continueAsGuest();
     } catch {
       Alert.alert('无法进入', '请稍后再试');
     } finally {
-      setLoading(false);
+      setLoadingAction('');
     }
   }
 
@@ -45,34 +152,69 @@ export default function LoginScreen() {
         <Text style={styles.subtitle}>登录后，你的戒赌记录和会员状态会绑定到同一个身份。</Text>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>进入你的戒赌空间</Text>
+          <View style={styles.segment}>
+            {([
+              ['login', '登录'],
+              ['register', '注册'],
+            ] as const).map(([key, label]) => (
+              <TouchableOpacity key={key} style={[styles.segmentItem, authMode === key && styles.segmentActive]} onPress={() => setAuthMode(key)} disabled={loading}>
+                <Text style={[styles.segmentText, authMode === key && styles.segmentTextActive]}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <TextInput
             style={styles.input}
             placeholder="邮箱地址"
             keyboardType="email-address"
             autoCapitalize="none"
+            autoCorrect={false}
             value={email}
             onChangeText={setEmail}
           />
           <TextInput
             style={styles.input}
-            placeholder="昵称（可选）"
-            value={displayName}
-            onChangeText={setDisplayName}
+            placeholder="密码（至少 6 位）"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
           />
-          <TouchableOpacity style={styles.primaryButton} onPress={handleEmailLogin} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>登录 / 创建本地账号</Text>}
+          {authMode === 'register' && (
+            <TextInput
+              style={styles.input}
+              placeholder="昵称（可选）"
+              value={displayName}
+              onChangeText={setDisplayName}
+            />
+          )}
+          <TouchableOpacity style={styles.primaryButton} onPress={handleEmailAuth} disabled={loading}>
+            {loadingAction === 'email' ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{primaryLabel}</Text>}
           </TouchableOpacity>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.divider} />
+            <Text style={styles.dividerText}>或</Text>
+            <View style={styles.divider} />
+          </View>
+
+          <TouchableOpacity style={styles.providerButton} onPress={handleAppleLogin} disabled={loading}>
+            {loadingAction === 'apple' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}> 使用 Apple 登录</Text>}
+          </TouchableOpacity>
+          {googleConfigured && (
+            <TouchableOpacity style={styles.providerButton} onPress={handleGoogleLogin} disabled={loading}>
+              {loadingAction === 'google' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}>Continue with Google</Text>}
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.secondaryButton} onPress={handleGuest} disabled={loading}>
             <Text style={styles.secondaryText}>先以访客模式进入</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>为什么需要登录？</Text>
-          <Text style={styles.infoText}>• 绑定 App Store 会员状态</Text>
-          <Text style={styles.infoText}>• 防止误删数据</Text>
-          <Text style={styles.infoText}>• 为后续云端备份和换手机恢复预留</Text>
+          <Text style={styles.infoTitle}>账号说明</Text>
+          <Text style={styles.infoText}>• 邮箱密码账号目前保存在本机</Text>
+          <Text style={styles.infoText}>• Apple 登录会绑定会员状态</Text>
+          <Text style={styles.infoText}>• 后续接后端后可支持换手机同步</Text>
         </View>
 
         <View style={styles.warningCard}>
@@ -95,17 +237,28 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F8FAF7' },
-  content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 80, paddingBottom: 40 },
+  content: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 70, paddingBottom: 40 },
   logoCircle: { width: 82, height: 82, borderRadius: 41, backgroundColor: '#E8F5E9', alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginBottom: 16 },
   logoEmoji: { fontSize: 42 },
   title: { fontSize: 34, fontWeight: 'bold', color: '#2E7D32', textAlign: 'center' },
-  subtitle: { fontSize: 15, color: '#666', textAlign: 'center', lineHeight: 22, marginTop: 10, marginBottom: 28 },
+  subtitle: { fontSize: 15, color: '#666', textAlign: 'center', lineHeight: 22, marginTop: 10, marginBottom: 24 },
   card: { backgroundColor: '#fff', borderRadius: 20, padding: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 2 },
-  cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 16, textAlign: 'center' },
+  segment: { flexDirection: 'row', backgroundColor: '#F1F3F1', borderRadius: 12, padding: 4, marginBottom: 16 },
+  segmentItem: { flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center' },
+  segmentActive: { backgroundColor: '#fff' },
+  segmentText: { fontSize: 14, color: '#777', fontWeight: 'bold' },
+  segmentTextActive: { color: '#2E7D32' },
   input: { borderWidth: 1.5, borderColor: '#E0E0E0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: '#333', marginBottom: 12, backgroundColor: '#fff' },
   primaryButton: { backgroundColor: '#2E7D32', borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 4 },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  secondaryButton: { borderWidth: 1.5, borderColor: '#2E7D32', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 12 },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 16 },
+  divider: { flex: 1, height: 1, backgroundColor: '#eee' },
+  dividerText: { color: '#aaa', fontSize: 12, marginHorizontal: 10 },
+  providerButton: { borderWidth: 1.5, borderColor: '#DADCE0', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 10, backgroundColor: '#fff' },
+  providerButtonMuted: { backgroundColor: '#F8FAF7' },
+  providerText: { color: '#222', fontSize: 15, fontWeight: 'bold' },
+  providerHint: { color: '#999', fontSize: 11, textAlign: 'center', lineHeight: 16, marginBottom: 8 },
+  secondaryButton: { borderWidth: 1.5, borderColor: '#2E7D32', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 2 },
   secondaryText: { color: '#2E7D32', fontSize: 15, fontWeight: 'bold' },
   infoCard: { backgroundColor: '#fff', borderRadius: 16, padding: 18, marginTop: 18 },
   infoTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 8 },
@@ -116,3 +269,5 @@ const styles = StyleSheet.create({
   legalLink: { color: '#2E7D32', fontSize: 12, textDecorationLine: 'underline' },
   legalDivider: { color: '#aaa', marginHorizontal: 8 },
 });
+
+

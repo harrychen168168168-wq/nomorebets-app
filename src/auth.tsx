@@ -1,8 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Crypto from 'expo-crypto';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import Purchases from 'react-native-purchases';
-import { ADMIN_EMAILS } from './config';
+import { ADMIN_EMAILS, ADMIN_LOCAL_PIN } from './config';
 import { configureRevenueCat } from './subscription';
 import { resetAllData } from './storage';
 
@@ -11,7 +12,7 @@ export type AppUser = {
   email?: string;
   displayName: string;
   role: 'user' | 'admin';
-  mode: 'email' | 'guest';
+  mode: 'email' | 'guest' | 'apple' | 'google';
   createdAt: string;
 };
 
@@ -19,10 +20,27 @@ type AuthContextValue = {
   user: AppUser | null;
   loading: boolean;
   isAdmin: boolean;
-  signInWithEmail: (email: string, displayName?: string) => Promise<void>;
+  isAdminCandidate: boolean;
+  registerWithEmail: (email: string, password: string, displayName?: string) => Promise<void>;
+  signInWithEmailPassword: (email: string, password: string) => Promise<void>;
+  signInWithApple: (payload: SocialSignInPayload) => Promise<void>;
+  signInWithGoogle: (payload: SocialSignInPayload) => Promise<void>;
+  unlockAdmin: (pin: string) => Promise<boolean>;
+  lockAdmin: () => void;
   continueAsGuest: () => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
+};
+
+type StoredAccount = AppUser & {
+  passwordHash?: string;
+  passwordSalt?: string;
+};
+
+export type SocialSignInPayload = {
+  providerUserId: string;
+  email?: string | null;
+  displayName?: string | null;
 };
 
 const CURRENT_USER_KEY = 'auth.currentUser';
@@ -35,13 +53,55 @@ function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
-function makeStableId(seed: string) {
+function makeStableId(seed: string, prefix = 'user') {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
     hash = (hash << 5) - hash + seed.charCodeAt(i);
     hash |= 0;
   }
-  return `user_${Math.abs(hash).toString(36)}`;
+  return `${prefix}_${Math.abs(hash).toString(36)}`;
+}
+
+function normalizeName(name?: string | null) {
+  return name?.trim() || '';
+}
+
+function isAdminEmail(email?: string | null) {
+  if (!email) return false;
+  return ADMIN_EMAILS.map(normalizeEmail).includes(normalizeEmail(email));
+}
+
+function publicUser(account: StoredAccount): AppUser {
+  return {
+    id: account.id,
+    email: account.email,
+    displayName: account.displayName,
+    role: account.role,
+    mode: account.mode,
+    createdAt: account.createdAt,
+  };
+}
+
+async function readAccounts(): Promise<StoredAccount[]> {
+  const rawUsers = await AsyncStorage.getItem(SAVED_USERS_KEY);
+  if (!rawUsers) return [];
+  try {
+    const users = JSON.parse(rawUsers);
+    return Array.isArray(users) ? users : [];
+  } catch {
+    return [];
+  }
+}
+
+async function hashPassword(password: string, salt: string) {
+  return Crypto.digestStringAsync(
+    Crypto.CryptoDigestAlgorithm.SHA256,
+    `${salt}:${password}`,
+  );
+}
+
+function makeSalt() {
+  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
 }
 
 async function bindRevenueCatUser(userId: string) {
@@ -57,6 +117,7 @@ async function bindRevenueCatUser(userId: string) {
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -74,32 +135,89 @@ export function AuthProvider({ children }: PropsWithChildren) {
     loadUser();
   }, []);
 
-  const persistUser = useCallback(async (nextUser: AppUser) => {
-    const rawUsers = await AsyncStorage.getItem(SAVED_USERS_KEY);
-    const users: AppUser[] = rawUsers ? JSON.parse(rawUsers) : [];
+  const persistUser = useCallback(async (nextUser: AppUser, account?: StoredAccount) => {
+    const users = await readAccounts();
+    const stored = account ?? nextUser;
     const filtered = users.filter((item) => item.id !== nextUser.id);
     await AsyncStorage.multiSet([
       [CURRENT_USER_KEY, JSON.stringify(nextUser)],
-      [SAVED_USERS_KEY, JSON.stringify([nextUser, ...filtered])],
+      [SAVED_USERS_KEY, JSON.stringify([stored, ...filtered])],
     ]);
     setUser(nextUser);
+    setAdminUnlocked(false);
     await bindRevenueCatUser(nextUser.id);
   }, []);
 
-  const signInWithEmail = useCallback(async (emailInput: string, displayName?: string) => {
+  const registerWithEmail = useCallback(async (emailInput: string, password: string, displayName?: string) => {
     const email = normalizeEmail(emailInput);
     if (!email.includes('@')) throw new Error('请输入有效邮箱');
-    const role = ADMIN_EMAILS.map(normalizeEmail).includes(email) ? 'admin' : 'user';
-    const nextUser: AppUser = {
-      id: makeStableId(email),
+    if (password.length < 6) throw new Error('密码至少需要 6 位');
+
+    const users = await readAccounts();
+    const existing = users.find((item) => item.mode === 'email' && normalizeEmail(item.email || '') === email);
+    if (existing?.passwordHash) throw new Error('这个邮箱已经注册，请直接登录');
+
+    const salt = makeSalt();
+    const account: StoredAccount = {
+      id: existing?.id || makeStableId(email, 'email'),
       email,
       displayName: displayName?.trim() || email.split('@')[0] || '用户',
-      role,
+      role: isAdminEmail(email) ? 'admin' : 'user',
       mode: 'email',
-      createdAt: new Date().toISOString(),
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      passwordSalt: salt,
+      passwordHash: await hashPassword(password, salt),
     };
-    await persistUser(nextUser);
+    await persistUser(publicUser(account), account);
   }, [persistUser]);
+
+  const signInWithEmailPassword = useCallback(async (emailInput: string, password: string) => {
+    const email = normalizeEmail(emailInput);
+    if (!email.includes('@')) throw new Error('请输入有效邮箱');
+    if (!password) throw new Error('请输入密码');
+
+    const users = await readAccounts();
+    const account = users.find((item) => item.mode === 'email' && normalizeEmail(item.email || '') === email);
+    if (!account) throw new Error('没有找到这个邮箱，请先注册');
+    if (!account.passwordHash || !account.passwordSalt) throw new Error('该本地账号还没有密码，请使用注册入口设置密码');
+
+    const passwordHash = await hashPassword(password, account.passwordSalt);
+    if (passwordHash !== account.passwordHash) throw new Error('密码不正确');
+
+    const refreshed: StoredAccount = {
+      ...account,
+      role: isAdminEmail(account.email) ? 'admin' : 'user',
+    };
+    await persistUser(publicUser(refreshed), refreshed);
+  }, [persistUser]);
+
+  const signInWithSocial = useCallback(async (mode: 'apple' | 'google', payload: SocialSignInPayload) => {
+    const providerUserId = payload.providerUserId.trim();
+    if (!providerUserId) throw new Error('登录信息不完整，请重试');
+
+    const id = makeStableId(`${mode}:${providerUserId}`, mode);
+    const users = await readAccounts();
+    const existing = users.find((item) => item.id === id);
+    const email = payload.email || existing?.email;
+    const displayName = normalizeName(payload.displayName) || existing?.displayName || (email ? email.split('@')[0] : mode === 'apple' ? 'Apple 用户' : 'Google 用户');
+    const account: StoredAccount = {
+      id,
+      email: email || undefined,
+      displayName,
+      role: isAdminEmail(email) ? 'admin' : 'user',
+      mode,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+    };
+    await persistUser(publicUser(account), account);
+  }, [persistUser]);
+
+  const signInWithApple = useCallback((payload: SocialSignInPayload) => {
+    return signInWithSocial('apple', payload);
+  }, [signInWithSocial]);
+
+  const signInWithGoogle = useCallback((payload: SocialSignInPayload) => {
+    return signInWithSocial('google', payload);
+  }, [signInWithSocial]);
 
   const continueAsGuest = useCallback(async () => {
     let guestId = await AsyncStorage.getItem(GUEST_ID_KEY);
@@ -117,9 +235,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await persistUser(nextUser);
   }, [persistUser]);
 
+  const unlockAdmin = useCallback(async (pin: string) => {
+    const allowed = user?.role === 'admin' && pin.trim() === ADMIN_LOCAL_PIN;
+    setAdminUnlocked(allowed);
+    return allowed;
+  }, [user?.role]);
+
+  const lockAdmin = useCallback(() => {
+    setAdminUnlocked(false);
+  }, []);
+
   const signOut = useCallback(async () => {
     await AsyncStorage.removeItem(CURRENT_USER_KEY);
     setUser(null);
+    setAdminUnlocked(false);
     if (Platform.OS === 'ios') {
       try {
         await configureRevenueCat();
@@ -134,6 +263,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     // 当前版本为本地账号：删除账号时同时清除本机保存的戒赌记录、联系人、目标和设置。
     await resetAllData();
     setUser(null);
+    setAdminUnlocked(false);
     if (Platform.OS === 'ios') {
       try {
         await configureRevenueCat();
@@ -147,12 +277,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const value = useMemo<AuthContextValue>(() => ({
     user,
     loading,
-    isAdmin: user?.role === 'admin',
-    signInWithEmail,
+    isAdmin: user?.role === 'admin' && adminUnlocked,
+    isAdminCandidate: user?.role === 'admin',
+    registerWithEmail,
+    signInWithEmailPassword,
+    signInWithApple,
+    signInWithGoogle,
+    unlockAdmin,
+    lockAdmin,
     continueAsGuest,
     signOut,
     deleteAccount,
-  }), [continueAsGuest, deleteAccount, loading, signInWithEmail, signOut, user]);
+  }), [adminUnlocked, continueAsGuest, deleteAccount, loading, lockAdmin, registerWithEmail, signInWithApple, signInWithEmailPassword, signInWithGoogle, signOut, unlockAdmin, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

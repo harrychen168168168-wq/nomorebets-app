@@ -30,7 +30,7 @@ const FREE_CONTACT_LIMIT = 1;
 const FREE_GOAL_LIMIT = 1;
 
 export default function ProfilePage() {
-  const { user, isAdmin, signOut, deleteAccount } = useAuth();
+  const { user, isAdmin, isAdminCandidate, signOut, deleteAccount, unlockAdmin, lockAdmin } = useAuth();
   const router = useRouter();
   const [streak, setStreak] = useState(0);
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -43,6 +43,7 @@ export default function ProfilePage() {
   const [subscription, setSubscription] = useState<SubscriptionSnapshot | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
+  const [adminPin, setAdminPin] = useState('');
   const [newContactName, setNewContactName] = useState('');
   const [newContactRelation, setNewContactRelation] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
@@ -212,6 +213,23 @@ export default function ProfilePage() {
     Linking.openURL(subscription?.managementURL || 'https://apps.apple.com/account/subscriptions');
   }
 
+  function formatAccountSub() {
+    if (user?.mode === 'guest') return '访客模式 · 本机保存';
+    if (user?.mode === 'apple') return user.email ? `Apple 登录 · ${user.email}` : 'Apple 登录';
+    if (user?.mode === 'google') return user.email ? `Google 登录 · ${user.email}` : 'Google 登录';
+    return user?.email || '本机邮箱账号';
+  }
+
+  async function handleAdminUnlock() {
+    const ok = await unlockAdmin(adminPin);
+    if (!ok) {
+      Alert.alert('验证失败', '管理员 PIN 不正确。');
+      return;
+    }
+    setAdminPin('');
+    Alert.alert('验证成功', '管理员入口已开启。');
+  }
+
   return (
     <PageContainer>
       <ScrollView style={styles.container}>
@@ -224,7 +242,7 @@ export default function ProfilePage() {
           <View style={styles.accountAvatar}><Text style={styles.accountAvatarText}>{isAdmin ? '🛡️' : '🌱'}</Text></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.accountName}>{user?.displayName || '用户'}</Text>
-            <Text style={styles.accountSub}>{user?.mode === 'guest' ? '访客模式 · 本机保存' : user?.email}</Text>
+            <Text style={styles.accountSub}>{formatAccountSub()}</Text>
           </View>
           <TouchableOpacity onPress={signOut}><Text style={styles.logoutText}>退出</Text></TouchableOpacity>
         </View>
@@ -259,10 +277,35 @@ export default function ProfilePage() {
           </View>
         </View>
 
-        {isAdmin && (
-          <TouchableOpacity style={styles.adminBanner} onPress={() => router.push('/admin')}>
-            <Text style={styles.adminText}>🛡️ 管理员入口</Text>
-          </TouchableOpacity>
+        {isAdminCandidate && (
+          <View style={styles.adminVerifyCard}>
+            <Text style={styles.adminVerifyTitle}>🛡️ 管理员验证</Text>
+            <Text style={styles.adminVerifySub}>管理员功能需要二次验证。正式接后端后，应改为服务器角色校验。</Text>
+            {isAdmin ? (
+              <>
+                <TouchableOpacity style={styles.adminBanner} onPress={() => router.push('/admin')}>
+                  <Text style={styles.adminText}>进入管理员中心</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.adminLockBtn} onPress={lockAdmin}>
+                  <Text style={styles.adminLockText}>锁定管理员入口</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  style={styles.inputBox}
+                  placeholder="输入管理员 PIN"
+                  value={adminPin}
+                  onChangeText={setAdminPin}
+                  secureTextEntry
+                  keyboardType="number-pad"
+                />
+                <TouchableOpacity style={styles.adminBanner} onPress={handleAdminUnlock}>
+                  <Text style={styles.adminText}>验证管理员身份</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
         )}
 
         <View style={styles.card}>
@@ -398,8 +441,13 @@ const styles = StyleSheet.create({
   subscriptionPrimaryText: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
   subscriptionSecondary: { borderWidth: 1, borderColor: '#2E7D32', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9, minWidth: 78, alignItems: 'center' },
   subscriptionSecondaryText: { color: '#2E7D32', fontSize: 13, fontWeight: 'bold' },
-  adminBanner: { margin: 16, marginBottom: 0, backgroundColor: '#E8F0FE', borderRadius: 12, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#90CAF9' },
-  adminText: { fontSize: 14, color: '#1565C0', fontWeight: 'bold' },
+  adminVerifyCard: { margin: 16, marginBottom: 0, backgroundColor: '#E8F0FE', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#90CAF9' },
+  adminVerifyTitle: { fontSize: 15, color: '#1565C0', fontWeight: 'bold', marginBottom: 4 },
+  adminVerifySub: { fontSize: 12, color: '#555', lineHeight: 18, marginBottom: 12 },
+  adminBanner: { backgroundColor: '#1565C0', borderRadius: 12, padding: 14, alignItems: 'center' },
+  adminText: { fontSize: 14, color: '#fff', fontWeight: 'bold' },
+  adminLockBtn: { alignItems: 'center', paddingTop: 10 },
+  adminLockText: { fontSize: 12, color: '#1565C0', textDecorationLine: 'underline' },
   card: { backgroundColor: '#fff', margin: 16, marginBottom: 8, borderRadius: 16, padding: 20 },
   cardTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   cardTitle: { fontSize: 17, fontWeight: 'bold', color: '#333', marginBottom: 4 },

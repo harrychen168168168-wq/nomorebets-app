@@ -135,7 +135,7 @@ export default function HopePage() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>🧬 坚持后身体的变化</Text>
-        <Text style={styles.cardSub}>这些都是科学研究证实的</Text>
+        <Text style={styles.cardSub}>很多人在恢复过程中会经历这些积极变化</Text>
         {MILESTONES.map((m, i) => {
           const reached = streak >= m.days;
           const isCurrent = currentMilestone?.days === m.days;
@@ -239,8 +239,8 @@ export default function HopePage() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>💬 真实故事</Text>
-        <Text style={styles.cardSub}>他们做到了，你也可以。</Text>
+        <Text style={styles.cardTitle}>💬 鼓励故事</Text>
+        <Text style={styles.cardSub}>这些故事用于鼓励和参考，你也可以写下自己的经历。</Text>
         {STORIES.map((story, i) => (
           <View key={i} style={styles.storyCard}>
             <TouchableOpacity onPress={() => setExpandedStory(expandedStory === i ? null : i)}>

@@ -1,4 +1,4 @@
-{
+﻿{
   "expo": {
     "name": "NO MORE BETS",
     "slug": "NoMoreBets",
@@ -10,7 +10,8 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nomorebets.app",
-      "buildNumber": "3",
+      "buildNumber": "4",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSCameraUsageDescription": "用于拍摄重要联系人头像，帮助你在冲动时联系支持的人。",
         "NSPhotoLibraryUsageDescription": "用于选择重要联系人头像，帮助你在冲动时看到支持你的人。",
@@ -31,6 +32,7 @@
     "plugins": [
       "expo-router",
       "expo-image-picker",
+      "expo-apple-authentication",
       [
         "expo-splash-screen",
         {
@@ -52,3 +54,4 @@
     }
   }
 }
+
