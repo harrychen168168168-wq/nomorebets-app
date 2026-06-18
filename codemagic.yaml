@@ -37,6 +37,24 @@ workflows:
         script: |
           xcode-project use-profiles
 
+      - name: Patch export options for latest Xcode
+        script: |
+          EXPORT_OPTIONS="$HOME/export_options.plist"
+
+          if [ -f "$EXPORT_OPTIONS" ]; then
+            echo "Before patch:"
+            plutil -p "$EXPORT_OPTIONS" || true
+
+            /usr/libexec/PlistBuddy -c "Set :method app-store-connect" "$EXPORT_OPTIONS" || \
+            /usr/libexec/PlistBuddy -c "Add :method string app-store-connect" "$EXPORT_OPTIONS"
+
+            echo "After patch:"
+            plutil -p "$EXPORT_OPTIONS" || true
+          else
+            echo "export_options.plist not found at $EXPORT_OPTIONS"
+            exit 1
+          fi
+
       - name: Set iOS version and build number
         script: |
           cd ios
@@ -47,11 +65,14 @@ workflows:
         script: |
           IOS_WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -n 1)
           IOS_SCHEME=$(xcodebuild -list -workspace "$IOS_WORKSPACE" | sed -n '/Schemes:/,$p' | tail -n +2 | sed '/^[[:space:]]*$/d' | head -n 1 | xargs)
+
           echo "Workspace: $IOS_WORKSPACE"
           echo "Scheme: $IOS_SCHEME"
+
           xcode-project build-ipa \
             --workspace "$IOS_WORKSPACE" \
-            --scheme "$IOS_SCHEME"
+            --scheme "$IOS_SCHEME" \
+            --export-options-plist="$HOME/export_options.plist"
 
     artifacts:
       - build/ios/ipa/*.ipa
