@@ -45,25 +45,99 @@ workflows:
           agvtool new-marketing-version 1.1.0
           agvtool new-version -all 3
 
-      - name: Create export options plist
+      - name: Create export options plist from installed profile
         script: |
           python3 - <<'PY'
+          import os
+          import glob
           import plistlib
+          import subprocess
+          import sys
+          from datetime import datetime
+
+          bundle_id = os.environ.get("APP_IDENTIFIER", "com.nomorebets.app")
+          team_id = os.environ.get("APPLE_TEAM_ID", "SK2FKVF4KW")
+          profile_dir = os.path.expanduser("~/Library/MobileDevice/Provisioning Profiles")
+          profile_paths = glob.glob(os.path.join(profile_dir, "*.mobileprovision"))
+
+          print(f"Looking for installed App Store profile:")
+          print(f"Bundle ID: {bundle_id}")
+          print(f"Team ID: {team_id}")
+          print(f"Profile dir: {profile_dir}")
+          print(f"Installed profiles found: {len(profile_paths)}")
+
+          matches = []
+
+          for path in profile_paths:
+              try:
+                  raw = subprocess.check_output(["security", "cms", "-D", "-i", path], stderr=subprocess.STDOUT)
+                  profile = plistlib.loads(raw)
+              except Exception as exc:
+                  print(f"Could not read profile {path}: {exc}")
+                  continue
+
+              name = profile.get("Name", "")
+              uuid = profile.get("UUID", "")
+              team_ids = profile.get("TeamIdentifier", [])
+              expiration = profile.get("ExpirationDate")
+              entitlements = profile.get("Entitlements", {})
+              app_identifier = entitlements.get("application-identifier", "")
+              provisioned_devices = profile.get("ProvisionedDevices")
+              provisions_all_devices = profile.get("ProvisionsAllDevices", False)
+
+              print("----")
+              print(f"Name: {name}")
+              print(f"UUID: {uuid}")
+              print(f"App Identifier: {app_identifier}")
+              print(f"Team IDs: {team_ids}")
+              print(f"Expiration: {expiration}")
+              print(f"ProvisionedDevices: {'yes' if provisioned_devices else 'no'}")
+              print(f"ProvisionsAllDevices: {provisions_all_devices}")
+
+              is_bundle_match = app_identifier.endswith("." + bundle_id)
+              is_team_match = team_id in team_ids
+              is_distribution_profile = not provisioned_devices and not provisions_all_devices
+
+              if is_bundle_match and is_team_match and is_distribution_profile:
+                  matches.append((expiration or datetime.min, path, profile))
+
+          if not matches:
+              print("ERROR: No matching installed App Store provisioning profile found.")
+              print("Expected bundle:", bundle_id)
+              print("Expected team:", team_id)
+              sys.exit(1)
+
+          matches.sort(key=lambda item: item[0], reverse=True)
+          selected_expiration, selected_path, selected_profile = matches[0]
+
+          profile_name = selected_profile.get("Name")
+          profile_uuid = selected_profile.get("UUID")
+
+          print("Selected provisioning profile:")
+          print(f"Name: {profile_name}")
+          print(f"UUID: {profile_uuid}")
+          print(f"Path: {selected_path}")
+          print(f"Expiration: {selected_expiration}")
 
           export_options = {
               "method": "app-store-connect",
               "destination": "export",
               "signingStyle": "manual",
-              "teamID": "SK2FKVF4KW",
+              "teamID": team_id,
               "provisioningProfiles": {
-                  "com.nomorebets.app": "NoMoreBets_AppStore_Valid"
+                  bundle_id: profile_uuid
               },
               "uploadSymbols": True,
-              "compileBitcode": False
+              "compileBitcode": False,
+              "manageAppVersionAndBuildNumber": False
           }
 
-          with open("/tmp/exportOptions.plist", "wb") as f:
+          export_path = "/tmp/exportOptions.plist"
+          with open(export_path, "wb") as f:
               plistlib.dump(export_options, f)
+
+          print(f"Created export options at {export_path}")
+          print(export_options)
           PY
 
           plutil -lint /tmp/exportOptions.plist
