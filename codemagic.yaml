@@ -47,47 +47,56 @@ workflows:
 
       - name: Create export options plist
         script: |
-          cat > /tmp/exportOptions.plist <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store-connect</string>
-            <key>destination</key>
-            <string>export</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>teamID</key>
-            <string>SK2FKVF4KW</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>com.nomorebets.app</key>
-              <string>NoMoreBets_AppStore_Valid</string>
-            </dict>
-            <key>uploadSymbols</key>
-            <true/>
-            <key>compileBitcode</key>
-            <false/>
-          </dict>
-          </plist>
-          EOF
+          python3 - <<'PY'
+          import plistlib
+
+          export_options = {
+              "method": "app-store-connect",
+              "destination": "export",
+              "signingStyle": "manual",
+              "teamID": "SK2FKVF4KW",
+              "provisioningProfiles": {
+                  "com.nomorebets.app": "NoMoreBets_AppStore_Valid"
+              },
+              "uploadSymbols": True,
+              "compileBitcode": False
+          }
+
+          with open("/tmp/exportOptions.plist", "wb") as f:
+              plistlib.dump(export_options, f)
+          PY
 
           plutil -lint /tmp/exportOptions.plist
           plutil -p /tmp/exportOptions.plist
 
       - name: Build IPA
         script: |
-          IOS_WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" | head -n 1)
-          IOS_SCHEME=$(xcodebuild -list -workspace "$IOS_WORKSPACE" | sed -n '/Schemes:/,$p' | tail -n +2 | sed '/^[[:space:]]*$/d' | head -n 1 | xargs)
+          IOS_WORKSPACE="ios/NOMOREBETS.xcworkspace"
+          IOS_SCHEME="NOMOREBETS"
+          ARCHIVE_PATH="$CM_BUILD_DIR/build/ios/archive/NOMOREBETS.xcarchive"
+          EXPORT_PATH="$CM_BUILD_DIR/build/ios/ipa"
 
           echo "Workspace: $IOS_WORKSPACE"
           echo "Scheme: $IOS_SCHEME"
+          echo "Archive path: $ARCHIVE_PATH"
+          echo "Export path: $EXPORT_PATH"
 
-          xcode-project build-ipa \
-            --workspace "$IOS_WORKSPACE" \
-            --scheme "$IOS_SCHEME" \
-            --export-options-plist=/tmp/exportOptions.plist
+          mkdir -p "$CM_BUILD_DIR/build/ios/archive"
+          mkdir -p "$EXPORT_PATH"
+
+          xcodebuild archive \
+            -workspace "$IOS_WORKSPACE" \
+            -scheme "$IOS_SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$ARCHIVE_PATH" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual
+
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist /tmp/exportOptions.plist
 
     artifacts:
       - build/ios/ipa/*.ipa
