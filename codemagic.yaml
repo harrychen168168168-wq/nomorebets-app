@@ -17,7 +17,7 @@ workflows:
         APPLE_TEAM_ID: "SK2FKVF4KW"
       ios_signing:
         provisioning_profiles:
-          - "NoMoreBets_AppStore_Valid"
+          - "NoMoreBets_AppStore_AppleSignIn"
         certificates:
           - "Nassau Connect"
 
