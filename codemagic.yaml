@@ -1,78 +1,148 @@
 workflows:
   ios-release:
-    name: iOS Release to App Store Connect
-    max_build_duration: 60
+    name: NoMoreBets iOS Release
+    max_build_duration: 90
     instance_type: mac_mini_m2
+
+    integrations:
+      app_store_connect: Codemagic
+
     environment:
-      vars:
-        APP_STORE_APP_ID: "6775357184"
-        XCODE_WORKSPACE: "ios/NOMOREBETS.xcworkspace"
-        XCODE_SCHEME: "NOMOREBETS"
-        BUNDLE_ID: "com.nomorebets.app"
-      node: 20
+      node: 22
       xcode: latest
       cocoapods: default
+      vars:
+        EXPO_NO_TELEMETRY: "1"
+        APP_IDENTIFIER: "com.nomorebets.app"
+        APPLE_TEAM_ID: "SK2FKVF4KW"
+      ios_signing:
+        provisioning_profiles:
+          - "NoMoreBets_AppStore_AppleSignIn"
+        certificates:
+          - "Nassau Connect"
+
     scripts:
-      - name: Install Dependencies
+      - name: Install dependencies
         script: |
-          npm install
+          npm install --legacy-peer-deps --no-audit --no-fund
+
       - name: Prebuild iOS project
         script: |
           npx expo prebuild --platform ios --clean
+
       - name: Install CocoaPods
         script: |
           cd ios
           pod install
+
       - name: Set up iOS code signing
         script: |
-          keychain initialize
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
-          keychain add-certificates
           xcode-project use-profiles
+
       - name: Set iOS version and build number
         script: |
           cd ios
           agvtool new-marketing-version 1.1.0
           agvtool new-version -all 6
+
       - name: Create export options plist from installed profile
         script: |
-          PROFILE_NAME=$(security cms -D -i "$CM_PROVISIONING_PROFILE" | plutil -extract Name raw -)
-          echo "Using provisioning profile: $PROFILE_NAME"
           python3 - <<'PY'
           import os
-          from pathlib import Path
+          import glob
+          import plistlib
+          import subprocess
+          import sys
+          from datetime import datetime
 
-          bundle_id = os.environ.get("BUNDLE_ID", "com.nomorebets.app")
-          team_id = os.environ.get("APPLE_TEAM_ID", "")
-          profile_name = os.popen('security cms -D -i "$CM_PROVISIONING_PROFILE" | plutil -extract Name raw -').read().strip()
+          bundle_id = os.environ.get("APP_IDENTIFIER", "com.nomorebets.app")
+          team_id = os.environ.get("APPLE_TEAM_ID", "SK2FKVF4KW")
+          profile_dir = os.path.expanduser("~/Library/MobileDevice/Provisioning Profiles")
+          profile_paths = glob.glob(os.path.join(profile_dir, "*.mobileprovision"))
 
-          plist = f"""<?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>app-store</string>
-              <key>teamID</key>
-              <string>{team_id}</string>
-              <key>signingStyle</key>
-              <string>manual</string>
-              <key>stripSwiftSymbols</key>
-              <true/>
-              <key>uploadBitcode</key>
-              <false/>
-              <key>uploadSymbols</key>
-              <true/>
-              <key>provisioningProfiles</key>
-              <dict>
-                  <key>{bundle_id}</key>
-                  <string>{profile_name}</string>
-              </dict>
-          </dict>
-          </plist>
-          """
-          Path("/tmp/exportOptions.plist").write_text(plist)
-          print(plist)
+          print(f"Looking for installed App Store profile:")
+          print(f"Bundle ID: {bundle_id}")
+          print(f"Team ID: {team_id}")
+          print(f"Profile dir: {profile_dir}")
+          print(f"Installed profiles found: {len(profile_paths)}")
+
+          matches = []
+
+          for path in profile_paths:
+              try:
+                  raw = subprocess.check_output(["security", "cms", "-D", "-i", path], stderr=subprocess.STDOUT)
+                  profile = plistlib.loads(raw)
+              except Exception as exc:
+                  print(f"Could not read profile {path}: {exc}")
+                  continue
+
+              name = profile.get("Name", "")
+              uuid = profile.get("UUID", "")
+              team_ids = profile.get("TeamIdentifier", [])
+              expiration = profile.get("ExpirationDate")
+              entitlements = profile.get("Entitlements", {})
+              app_identifier = entitlements.get("application-identifier", "")
+              provisioned_devices = profile.get("ProvisionedDevices")
+              provisions_all_devices = profile.get("ProvisionsAllDevices", False)
+
+              print("----")
+              print(f"Name: {name}")
+              print(f"UUID: {uuid}")
+              print(f"App Identifier: {app_identifier}")
+              print(f"Team IDs: {team_ids}")
+              print(f"Expiration: {expiration}")
+              print(f"ProvisionedDevices: {'yes' if provisioned_devices else 'no'}")
+              print(f"ProvisionsAllDevices: {provisions_all_devices}")
+
+              is_bundle_match = app_identifier.endswith("." + bundle_id)
+              is_team_match = team_id in team_ids
+              is_distribution_profile = not provisioned_devices and not provisions_all_devices
+
+              if is_bundle_match and is_team_match and is_distribution_profile:
+                  matches.append((expiration or datetime.min, path, profile))
+
+          if not matches:
+              print("ERROR: No matching installed App Store provisioning profile found.")
+              print("Expected bundle:", bundle_id)
+              print("Expected team:", team_id)
+              sys.exit(1)
+
+          matches.sort(key=lambda item: item[0], reverse=True)
+          selected_expiration, selected_path, selected_profile = matches[0]
+
+          profile_name = selected_profile.get("Name")
+          profile_uuid = selected_profile.get("UUID")
+
+          print("Selected provisioning profile:")
+          print(f"Name: {profile_name}")
+          print(f"UUID: {profile_uuid}")
+          print(f"Path: {selected_path}")
+          print(f"Expiration: {selected_expiration}")
+
+          export_options = {
+              "method": "app-store-connect",
+              "destination": "export",
+              "signingStyle": "manual",
+              "teamID": team_id,
+              "provisioningProfiles": {
+                  bundle_id: profile_uuid
+              },
+              "uploadSymbols": True,
+              "compileBitcode": False,
+              "manageAppVersionAndBuildNumber": False
+          }
+
+          export_path = "/tmp/exportOptions.plist"
+          with open(export_path, "wb") as f:
+              plistlib.dump(export_options, f)
+
+          print(f"Created export options at {export_path}")
+          print(export_options)
           PY
+
+          plutil -lint /tmp/exportOptions.plist
+          plutil -p /tmp/exportOptions.plist
+
       - name: Build IPA
         script: |
           IOS_WORKSPACE="ios/NOMOREBETS.xcworkspace"
@@ -90,11 +160,12 @@ workflows:
 
           xcodebuild archive -workspace "$IOS_WORKSPACE" -scheme "$IOS_SCHEME" -configuration Release -destination "generic/platform=iOS" -archivePath "$ARCHIVE_PATH" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual
           xcodebuild -exportArchive -archivePath "$ARCHIVE_PATH" -exportPath "$EXPORT_PATH" -exportOptionsPlist /tmp/exportOptions.plist
+
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
-      - ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.app
-      - ~/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
     publishing:
       app_store_connect:
         auth: integration
