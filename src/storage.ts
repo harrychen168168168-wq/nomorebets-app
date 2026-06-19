@@ -24,6 +24,7 @@ const APP_DATA_KEYS = [
   'futureLetter',
   'myStory',
   'myStoryName',
+  'myStories',
 ];
 
 export type DailyRecord = {
