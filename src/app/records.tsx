@@ -1,7 +1,8 @@
+import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { DailyRecord, getTodayString, readDailyRecords, upsertDailyRecord } from '../storage';
 
 const MOODS = ['😊 平静', '😄 开心', '😰 焦虑', '😔 低落', '😤 愤怒', '😴 疲惫'];
@@ -123,7 +124,7 @@ export default function RecordsPage() {
 
   return (
     <PageContainer>
-      <ScrollView style={styles.container}>
+      <KeyboardAwareScrollView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>📋 记录</Text>
           <Text style={styles.headerSub}>当前编辑：{selectedDate}</Text>
@@ -324,7 +325,7 @@ export default function RecordsPage() {
         )}
 
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </PageContainer>
   );
 }

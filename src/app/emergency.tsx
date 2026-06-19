@@ -1,4 +1,5 @@
 import { useAuth } from '@/auth';
+import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
 import { AI_ADDON_10_PRODUCT_ID, AI_PROXY_URL } from '@/config';
@@ -155,7 +156,7 @@ export default function EmergencyPage() {
 
   return (
     <PageContainer>
-      <ScrollView style={styles.container}>
+      <KeyboardAwareScrollView style={styles.container}>
         {showModal && (
           <View style={styles.modalOverlay}>
             <View style={styles.modalBox}>
@@ -248,7 +249,7 @@ export default function EmergencyPage() {
 
         <View style={{ height: 40 }} />
         <PaywallModal visible={showPaywall} onClose={() => setShowPaywall(false)} featureName="AI 冲动倾诉" onSuccess={() => { getSubscriptionSnapshot().then((snapshot) => setIsAnnualPro(snapshot.planType === 'annual')); setShowPaywall(false); }} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </PageContainer>
   );
 }

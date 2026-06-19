@@ -1,4 +1,5 @@
 import { useAuth } from '@/auth';
+import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
 import { PRIVACY_POLICY_URL, SUPPORT_EMAIL, TERMS_URL } from '@/config';
@@ -6,7 +7,7 @@ import { configureRevenueCat, customerInfoToSnapshot, formatSubscriptionDate, ge
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Purchases from 'react-native-purchases';
 import { loadData as loadStoredData, resetAllData, saveData as saveStoredData } from '../storage';
 
@@ -228,7 +229,7 @@ export default function ProfilePage() {
 
   return (
     <PageContainer>
-      <ScrollView style={styles.container}>
+      <KeyboardAwareScrollView style={styles.container}>
         <View style={styles.header}><Text style={styles.headerTitle}>我的</Text><Text style={styles.headerStreak}>已坚持 {streak} 天</Text></View>
 
         <View style={styles.accountCard}>
@@ -370,7 +371,7 @@ export default function ProfilePage() {
 
         <View style={{ height: 40 }} />
         <PaywallModal visible={showPaywall} featureName={paywallFeature} onClose={() => setShowPaywall(false)} onSuccess={() => { setShowPaywall(false); refreshSubscription(); }} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </PageContainer>
   );
 }

@@ -1,7 +1,8 @@
+import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { loadData as loadStoredData, saveData as saveStoredData } from '../storage';
 
 const DAILY_QUOTES = [
@@ -87,7 +88,7 @@ export default function HopePage() {
 
   return (
     <PageContainer>
-      <ScrollView style={styles.container}>
+      <KeyboardAwareScrollView style={styles.container}>
         <View style={styles.header}><Text style={styles.headerTitle}>希望与动力</Text><Text style={styles.headerSub}>每一天都是新的可能。</Text></View>
         <View style={styles.quoteCard}><Text style={styles.quoteLabel}>今日语录</Text><Text style={styles.quoteText}>「{DAILY_QUOTES[quoteIndex]}」</Text></View>
         <View style={styles.choiceCard}><Text style={styles.choiceTitle}>{streak > 0 ? '你已经坚持了 ' + streak + ' 天' : '今天是新的开始'}</Text><Text style={styles.choiceText}>你选择了家人，选择了未来，也选择了真正的自己。</Text></View>
@@ -124,7 +125,7 @@ export default function HopePage() {
           </View>
         </View>
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </PageContainer>
   );
 }
