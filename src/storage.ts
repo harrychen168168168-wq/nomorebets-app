@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const CURRENT_USER_KEY = 'auth.currentUser';
+
 const KEYS = {
   STREAK: 'streak',
   LONGEST_STREAK: 'longestStreak',
@@ -14,6 +16,16 @@ const KEYS = {
   DAILY_RECORDS: 'dailyRecords',
 };
 
+const APP_DATA_KEYS = [
+  ...Object.values(KEYS),
+  'importantContacts',
+  'myGoals',
+  'whyQuit',
+  'futureLetter',
+  'myStory',
+  'myStoryName',
+];
+
 export type DailyRecord = {
   date: string;
   gambled: boolean;
@@ -26,6 +38,40 @@ export type DailyRecord = {
   amount: number;
 };
 
+async function getCurrentUserId() {
+  const raw = await AsyncStorage.getItem(CURRENT_USER_KEY);
+  if (!raw) return 'signed_out';
+  try {
+    const parsed = JSON.parse(raw);
+    return String(parsed?.id || 'signed_out').replace(/[^a-zA-Z0-9_.-]/g, '_');
+  } catch {
+    return 'signed_out';
+  }
+}
+
+async function scopedKey(key: string) {
+  const userId = await getCurrentUserId();
+  return 'user.' + userId + '.' + key;
+}
+
+async function getScopedItem(key: string) {
+  return AsyncStorage.getItem(await scopedKey(key));
+}
+
+async function setScopedItem(key: string, value: string) {
+  await AsyncStorage.setItem(await scopedKey(key), value);
+}
+
+async function removeScopedItems(keys: string[]) {
+  const scopedKeys = await Promise.all(keys.map((key) => scopedKey(key)));
+  await AsyncStorage.multiRemove(scopedKeys);
+}
+
+async function scopedMultiSet(entries: [string, string][]) {
+  const scopedEntries = await Promise.all(entries.map(async ([key, value]) => [await scopedKey(key), value] as [string, string]));
+  await AsyncStorage.multiSet(scopedEntries);
+}
+
 export function getTodayString() {
   return getLocalDateString(new Date());
 }
@@ -34,7 +80,7 @@ export function getLocalDateString(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return year + '-' + month + '-' + day;
 }
 
 function addDays(dateStr: string, days: number) {
@@ -59,15 +105,15 @@ function normalizeRecord(record: Partial<DailyRecord> & { date: string }): Daily
 }
 
 export async function saveData(key: string, value: string) {
-  await AsyncStorage.setItem(key, value);
+  await setScopedItem(key, value);
 }
 
 export async function loadData(key: string): Promise<string | null> {
-  return await AsyncStorage.getItem(key);
+  return getScopedItem(key);
 }
 
 export async function readDailyRecords(): Promise<DailyRecord[]> {
-  const raw = await AsyncStorage.getItem(KEYS.DAILY_RECORDS);
+  const raw = await getScopedItem(KEYS.DAILY_RECORDS);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -86,7 +132,7 @@ export async function writeDailyRecords(records: DailyRecord[]) {
     .filter((item) => item.date)
     .map((item) => normalizeRecord(item))
     .sort((a, b) => b.date.localeCompare(a.date));
-  await AsyncStorage.setItem(KEYS.DAILY_RECORDS, JSON.stringify(normalized));
+  await setScopedItem(KEYS.DAILY_RECORDS, JSON.stringify(normalized));
   await syncAppStateFromRecords(normalized);
   return normalized;
 }
@@ -98,7 +144,7 @@ export async function upsertDailyRecord(record: DailyRecord) {
 }
 
 async function getStoredLongest() {
-  const stored = await AsyncStorage.getItem(KEYS.LONGEST_STREAK);
+  const stored = await getScopedItem(KEYS.LONGEST_STREAK);
   return Number(stored) || 0;
 }
 
@@ -149,15 +195,7 @@ export async function calculateStats(recordsInput?: DailyRecord[]) {
   const longestStreak = Math.max(storedLongest, longestFromRecords, streak);
   const todayRecord = recordMap.get(today);
 
-  return {
-    streak,
-    longestStreak,
-    monthlyDays,
-    monthlyLoss,
-    todayChecked: !!todayRecord,
-    todayGambled: !!todayRecord?.gambled,
-    todayRecord,
-  };
+  return { streak, longestStreak, monthlyDays, monthlyLoss, todayChecked: !!todayRecord, todayGambled: !!todayRecord?.gambled, todayRecord };
 }
 
 export async function syncAppStateFromRecords(recordsInput?: DailyRecord[]) {
@@ -180,20 +218,17 @@ export async function syncAppStateFromRecords(recordsInput?: DailyRecord[]) {
     entries.push([KEYS.LAST_CHECKIN_TYPE, todayRecord.gambled ? 'relapse' : 'no_gamble']);
   }
 
-  await AsyncStorage.multiSet(entries);
-  if (!todayRecord) {
-    await AsyncStorage.multiRemove([KEYS.LAST_CHECKIN_DATE, KEYS.LAST_CHECKIN_TYPE]);
-  }
-
+  await scopedMultiSet(entries);
+  if (!todayRecord) await removeScopedItems([KEYS.LAST_CHECKIN_DATE, KEYS.LAST_CHECKIN_TYPE]);
   return stats;
 }
 
 export async function loadAppState() {
   const today = getTodayString();
   const [quitStartDate, walkedDate, accompaniedDate, records] = await Promise.all([
-    AsyncStorage.getItem(KEYS.QUIT_START_DATE),
-    AsyncStorage.getItem(KEYS.WALKED_DATE),
-    AsyncStorage.getItem(KEYS.ACCOMPANIED_DATE),
+    getScopedItem(KEYS.QUIT_START_DATE),
+    getScopedItem(KEYS.WALKED_DATE),
+    getScopedItem(KEYS.ACCOMPANIED_DATE),
     readDailyRecords(),
   ]);
   const stats = await syncAppStateFromRecords(records);
@@ -211,51 +246,35 @@ export async function loadAppState() {
   };
 }
 
-export async function checkInNoGamble(_currentStreak?: number, _currentMonthlyDays?: number, _currentLongest?: number) {
+export async function checkInNoGamble() {
   const today = getTodayString();
   const existing = (await readDailyRecords()).find((record) => record.date === today);
-  const updatedRecord = normalizeRecord({
-    ...existing,
-    date: today,
-    gambled: false,
-    result: '',
-    amount: 0,
-  });
+  const updatedRecord = normalizeRecord({ ...existing, date: today, gambled: false, result: '', amount: 0 });
   const updated = await upsertDailyRecord(updatedRecord);
   const stats = await calculateStats(updated);
-  return {
-    newStreak: stats.streak,
-    newLongest: stats.longestStreak,
-    newMonthlyDays: stats.monthlyDays,
-  };
+  return { newStreak: stats.streak, newLongest: stats.longestStreak, newMonthlyDays: stats.monthlyDays };
 }
 
 export async function checkInRelapse() {
   const today = getTodayString();
   const existing = (await readDailyRecords()).find((record) => record.date === today);
-  const updatedRecord = normalizeRecord({
-    ...existing,
-    date: today,
-    gambled: true,
-    result: existing?.result || '',
-  });
-  await upsertDailyRecord(updatedRecord);
+  await upsertDailyRecord(normalizeRecord({ ...existing, date: today, gambled: true, result: existing?.result || '' }));
 }
 
 export async function completeWalk() {
-  await AsyncStorage.setItem(KEYS.WALKED_DATE, getTodayString());
+  await setScopedItem(KEYS.WALKED_DATE, getTodayString());
 }
 
 export async function completeAccompany() {
-  await AsyncStorage.setItem(KEYS.ACCOMPANIED_DATE, getTodayString());
+  await setScopedItem(KEYS.ACCOMPANIED_DATE, getTodayString());
 }
 
 export async function updateMonthlyLoss(amount: number) {
-  await AsyncStorage.setItem(KEYS.MONTHLY_LOSS, String(amount));
+  await setScopedItem(KEYS.MONTHLY_LOSS, String(amount));
 }
 
 export async function resetAllData() {
-  await AsyncStorage.clear();
+  await removeScopedItems(APP_DATA_KEYS);
 }
 
 export async function calcMonthlyLoss(): Promise<number> {

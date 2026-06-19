@@ -38,15 +38,12 @@ export default function LoginScreen() {
       try {
         setLoadingAction('google');
         const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: { Authorization: 'Bearer ' + accessToken },
         });
         if (!profileResponse.ok) throw new Error('profile failed');
         const profile = await profileResponse.json();
-        await signInWithGoogle({
-          providerUserId: String(profile.sub || profile.email || ''),
-          email: profile.email,
-          displayName: profile.name,
-        });
+        await signInWithGoogle({ providerUserId: String(profile.sub || profile.email || ''), email: profile.email, displayName: profile.name });
+        Alert.alert('登录成功', 'Google 账号已登录。不同账号会使用各自的数据。');
       } catch {
         Alert.alert('Google 登录失败', '暂时无法读取 Google 账号信息，请稍后重试。');
       } finally {
@@ -71,11 +68,13 @@ export default function LoginScreen() {
       setLoadingAction('email');
       if (authMode === 'login') {
         await signInWithEmailPassword(email, password);
+        Alert.alert('登录成功', '已进入你的账号。');
       } else {
         await registerWithEmail(email, password, displayName);
+        Alert.alert('注册成功', '账号已创建。以后请用这个邮箱登录。');
       }
     } catch (error: any) {
-      Alert.alert(authMode === 'login' ? '登录失败' : '注册失败', error?.message || '请检查后重试');
+      Alert.alert(authMode === 'login' ? '登录失败' : '注册失败', error?.message || '请检查后重试。');
     } finally {
       setLoadingAction('');
     }
@@ -94,21 +93,13 @@ export default function LoginScreen() {
       }
       setLoadingAction('apple');
       const credential = await AppleAuthentication.signInAsync({
-        requestedScopes: [
-          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          AppleAuthentication.AppleAuthenticationScope.EMAIL,
-        ],
+        requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME, AppleAuthentication.AppleAuthenticationScope.EMAIL],
       });
       const nameParts = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean);
-      await signInWithApple({
-        providerUserId: credential.user,
-        email: credential.email,
-        displayName: nameParts.join(' '),
-      });
+      await signInWithApple({ providerUserId: credential.user, email: credential.email, displayName: nameParts.join(' ') });
+      Alert.alert('登录成功', 'Apple 账号已登录。');
     } catch (error: any) {
-      if (error?.code !== 'ERR_REQUEST_CANCELED') {
-        Alert.alert('Apple 登录失败', '请稍后再试。');
-      }
+      if (error?.code !== 'ERR_REQUEST_CANCELED') Alert.alert('Apple 登录失败', '请稍后再试。');
     } finally {
       setLoadingAction('');
     }
@@ -116,11 +107,11 @@ export default function LoginScreen() {
 
   async function handleGoogleLogin() {
     if (!googleConfigured) {
-      Alert.alert('Google 登录未配置', '请先在 src/config.ts 填入 GOOGLE_IOS_CLIENT_ID 或 GOOGLE_WEB_CLIENT_ID。');
+      Alert.alert('Google 登录未配置', '请先在 src/config.ts 填入 Google Client ID。');
       return;
     }
     if (!googleRequest) {
-      Alert.alert('Google 登录暂不可用', '登录配置仍在准备中，请稍后再试。');
+      Alert.alert('Google 登录暂不可用', '登录配置还在准备中，请稍后再试。');
       return;
     }
     try {
@@ -135,8 +126,9 @@ export default function LoginScreen() {
     try {
       setLoadingAction('guest');
       await continueAsGuest();
+      Alert.alert('已进入访客模式', '访客模式数据只保存在本机。');
     } catch {
-      Alert.alert('无法进入', '请稍后再试');
+      Alert.alert('无法进入', '请稍后再试。');
     } finally {
       setLoadingAction('');
     }
@@ -145,64 +137,34 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.logoCircle}>
-          <Text style={styles.logoEmoji}>🌱</Text>
-        </View>
+        <View style={styles.logoCircle}><Text style={styles.logoEmoji}>🌱</Text></View>
         <Text style={styles.title}>NoMoreBets</Text>
-        <Text style={styles.subtitle}>登录后，你的戒赌记录和会员状态会绑定到同一个身份。</Text>
+        <Text style={styles.subtitle}>登录后，每个账号会使用自己的戒赌记录、联系人、目标和会员状态。</Text>
 
         <View style={styles.card}>
           <View style={styles.segment}>
-            {([
-              ['login', '登录'],
-              ['register', '注册'],
-            ] as const).map(([key, label]) => (
+            {([['login', '登录'], ['register', '注册']] as const).map(([key, label]) => (
               <TouchableOpacity key={key} style={[styles.segmentItem, authMode === key && styles.segmentActive]} onPress={() => setAuthMode(key)} disabled={loading}>
                 <Text style={[styles.segmentText, authMode === key && styles.segmentTextActive]}>{label}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <TextInput
-            style={styles.input}
-            placeholder="邮箱地址"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-            value={email}
-            onChangeText={setEmail}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="密码（至少 6 位）"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-          {authMode === 'register' && (
-            <TextInput
-              style={styles.input}
-              placeholder="昵称（可选）"
-              value={displayName}
-              onChangeText={setDisplayName}
-            />
-          )}
+          <TextInput style={styles.input} placeholder="邮箱地址" keyboardType="email-address" autoCapitalize="none" autoCorrect={false} value={email} onChangeText={setEmail} />
+          <TextInput style={styles.input} placeholder="密码（至少 6 位）" secureTextEntry value={password} onChangeText={setPassword} />
+          {authMode === 'register' && <TextInput style={styles.input} placeholder="昵称（可选）" value={displayName} onChangeText={setDisplayName} />}
           <TouchableOpacity style={styles.primaryButton} onPress={handleEmailAuth} disabled={loading}>
             {loadingAction === 'email' ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{primaryLabel}</Text>}
           </TouchableOpacity>
 
-          <View style={styles.dividerRow}>
-            <View style={styles.divider} />
-            <Text style={styles.dividerText}>或</Text>
-            <View style={styles.divider} />
-          </View>
+          <View style={styles.dividerRow}><View style={styles.divider} /><Text style={styles.dividerText}>或</Text><View style={styles.divider} /></View>
 
           <TouchableOpacity style={styles.providerButton} onPress={handleAppleLogin} disabled={loading}>
-            {loadingAction === 'apple' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}> 使用 Apple 登录</Text>}
+            {loadingAction === 'apple' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}>使用 Apple 登录</Text>}
           </TouchableOpacity>
           {googleConfigured && (
             <TouchableOpacity style={styles.providerButton} onPress={handleGoogleLogin} disabled={loading}>
-              {loadingAction === 'google' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}>Continue with Google</Text>}
+              {loadingAction === 'google' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}>使用 Google 登录</Text>}
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.secondaryButton} onPress={handleGuest} disabled={loading}>
@@ -212,9 +174,9 @@ export default function LoginScreen() {
 
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>账号说明</Text>
-          <Text style={styles.infoText}>• 邮箱密码账号目前保存在本机</Text>
-          <Text style={styles.infoText}>• Apple 登录会绑定会员状态</Text>
-          <Text style={styles.infoText}>• 后续接后端后可支持换手机同步</Text>
+          <Text style={styles.infoText}>· 邮箱密码账号目前保存在本机。</Text>
+          <Text style={styles.infoText}>· Apple / Google 登录会绑定会员状态。</Text>
+          <Text style={styles.infoText}>· 后续接正式后端后，可支持跨手机同步。</Text>
         </View>
 
         <View style={styles.warningCard}>
@@ -222,13 +184,9 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.legalRow}>
-          <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}>
-            <Text style={styles.legalLink}>隐私政策</Text>
-          </TouchableOpacity>
+          <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}><Text style={styles.legalLink}>隐私政策</Text></TouchableOpacity>
           <Text style={styles.legalDivider}>·</Text>
-          <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}>
-            <Text style={styles.legalLink}>使用条款</Text>
-          </TouchableOpacity>
+          <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}><Text style={styles.legalLink}>使用条款</Text></TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -255,9 +213,7 @@ const styles = StyleSheet.create({
   divider: { flex: 1, height: 1, backgroundColor: '#eee' },
   dividerText: { color: '#aaa', fontSize: 12, marginHorizontal: 10 },
   providerButton: { borderWidth: 1.5, borderColor: '#DADCE0', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 10, backgroundColor: '#fff' },
-  providerButtonMuted: { backgroundColor: '#F8FAF7' },
   providerText: { color: '#222', fontSize: 15, fontWeight: 'bold' },
-  providerHint: { color: '#999', fontSize: 11, textAlign: 'center', lineHeight: 16, marginBottom: 8 },
   secondaryButton: { borderWidth: 1.5, borderColor: '#2E7D32', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 2 },
   secondaryText: { color: '#2E7D32', fontSize: 15, fontWeight: 'bold' },
   infoCard: { backgroundColor: '#fff', borderRadius: 16, padding: 18, marginTop: 18 },
@@ -269,5 +225,3 @@ const styles = StyleSheet.create({
   legalLink: { color: '#2E7D32', fontSize: 12, textDecorationLine: 'underline' },
   legalDivider: { color: '#aaa', marginHorizontal: 8 },
 });
-
-

@@ -10,11 +10,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nomorebets.app",
-      "buildNumber": "5",
+      "buildNumber": "6",
       "usesAppleSignIn": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "用于拍摄重要联系人头像，帮助你在冲动时联系支持的人。",
-        "NSPhotoLibraryUsageDescription": "用于选择重要联系人头像，帮助你在冲动时看到支持你的人。",
+        "NSCameraUsageDescription": "用于拍摄账号头像或重要联系人头像，帮助你在冲动时看到支持你的人。",
+        "NSPhotoLibraryUsageDescription": "用于选择账号头像或重要联系人头像，帮助你在冲动时看到支持你的人。",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -54,4 +54,3 @@
     }
   }
 }
-

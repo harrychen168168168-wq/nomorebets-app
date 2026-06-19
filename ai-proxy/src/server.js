@@ -214,11 +214,16 @@ function resolvePlan(productId) {
 
 function findActiveSubscriptionProductId(subscriptions) {
   const now = Date.now();
+  const activeIds = [];
   for (const [productId, subscription] of Object.entries(subscriptions || {})) {
     const expires = subscription?.expires_date ? new Date(subscription.expires_date) : null;
-    if (!expires || !Number.isFinite(expires.getTime()) || expires.getTime() > now) return productId;
+    if (!expires || !Number.isFinite(expires.getTime()) || expires.getTime() > now) activeIds.push(productId);
   }
-  return '';
+  const annual = activeIds.find((productId) => config.annualProductIds.includes(productId));
+  if (annual) return annual;
+  const monthly = activeIds.find((productId) => config.monthlyProductIds.includes(productId));
+  if (monthly) return monthly;
+  return activeIds[0] || '';
 }
 
 function collectAddonGrants(subscriber) {

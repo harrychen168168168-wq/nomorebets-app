@@ -1,5 +1,5 @@
 import { PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
-import { configureRevenueCat, customerInfoToSnapshot, getFriendlyPurchaseError, hasActivePro } from '@/subscription';
+import { configureRevenueCat, customerInfoToSnapshot, getFriendlyPurchaseError } from '@/subscription';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Purchases, { PurchasesPackage } from 'react-native-purchases';
@@ -33,6 +33,8 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
   const [purchasing, setPurchasing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const isAiFeature = featureName?.includes('AI');
+
   useEffect(() => {
     if (visible) loadOfferings();
   }, [visible]);
@@ -43,7 +45,6 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
       setErrorMsg('订阅购买需要在 iOS 真机、TestFlight 或 App Store 环境中测试。');
       return;
     }
-
     try {
       setLoading(true);
       setErrorMsg(null);
@@ -67,18 +68,27 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
   const selectedPackage = selected === 'ANNUAL' ? annual : monthly;
   const hasPlans = !!annual || !!monthly;
 
+  function finishWithSnapshot(customerInfo: any) {
+    const snapshot = customerInfoToSnapshot(customerInfo);
+    if (!snapshot.isPro) {
+      Alert.alert('正在确认订阅', '购买流程已完成，但会员状态还没同步。请稍后点“恢复购买”。');
+      return;
+    }
+    if (isAiFeature && snapshot.planType !== 'annual') {
+      Alert.alert('AI 仅限年付会员', '你的月付会员已生效，但 AI 冲动倾诉需要年付会员或后续加购包。');
+      return;
+    }
+    Alert.alert('订阅已生效', snapshot.planType === 'annual' ? '年付会员已解锁全部功能。' : '月付基础会员已解锁基础功能。');
+    onSuccess();
+  }
+
   async function handlePurchase(pkg?: PurchasesPackage) {
     if (!pkg || purchasing) return;
     try {
       setPurchasing(true);
       await configureRevenueCat();
       const { customerInfo } = await Purchases.purchasePackage(pkg);
-      if (hasActivePro(customerInfo)) {
-        onSuccess();
-      } else {
-        const snapshot = customerInfoToSnapshot(customerInfo);
-        Alert.alert('正在确认订阅', `购买流程已完成，但高级会员状态尚未同步。请稍后点“恢复购买”。\n当前状态：${snapshot.activeEntitlementId || '未激活'}`);
-      }
+      finishWithSnapshot(customerInfo);
     } catch (error: any) {
       if (!error?.userCancelled) Alert.alert('购买失败', getFriendlyPurchaseError(error));
     } finally {
@@ -92,17 +102,12 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
       setPurchasing(true);
       await configureRevenueCat();
       const customerInfo = await Purchases.restorePurchases();
-      if (hasActivePro(customerInfo)) onSuccess();
-      else Alert.alert('没有找到有效订阅', '请确认你当前登录的是购买时使用的 Apple ID。如果刚刚购买，请稍后再试。');
+      finishWithSnapshot(customerInfo);
     } catch (error) {
       Alert.alert('恢复失败', getFriendlyPurchaseError(error));
     } finally {
       setPurchasing(false);
     }
-  }
-
-  function openManageSubscription() {
-    Linking.openURL('https://apps.apple.com/account/subscriptions');
   }
 
   return (
@@ -114,26 +119,16 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
           </TouchableOpacity>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
             <View style={styles.heroIcon}><Text style={styles.heroEmoji}>🌱</Text></View>
-            <Text style={styles.title}>开启 NoMoreBets Pro</Text>
+            <Text style={styles.title}>NoMoreBets 会员</Text>
             <Text style={styles.subtitle}>
-              {featureName ? `“${featureName}” 属于高级功能。` : '更完整的戒赌工具，适合长期坚持和复盘。'}3天免费试用，之后通过 App Store 自动续订。
+              {featureName ? '“' + featureName + '”需要对应会员权限。' : '请选择适合你的会员方案。'}月付和年付权益不同，购买前请看清楚。
             </Text>
 
             <View style={styles.featuresCard}>
-              {[
-                ['💬', 'AI 冲动倾诉', '想赌的时候，先把冲动说出来。'],
-                ['📈', '长期记录追踪', '保留更多记录，帮助你看清复发规律。'],
-                ['🎯', '目标与联系人', '把省下的钱和重要的人放在眼前。'],
-                ['🔁', '恢复购买', '换设备或重装后可恢复会员状态。'],
-              ].map(([icon, title, desc]) => (
-                <View key={title} style={styles.featureRow}>
-                  <Text style={styles.featureIcon}>{icon}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.featureTitle}>{title}</Text>
-                    <Text style={styles.featureDesc}>{desc}</Text>
-                  </View>
-                </View>
-              ))}
+              <Text style={styles.sectionTitle}>权益差别</Text>
+              <Text style={styles.featureLine}>月付基础会员：适合日常记录，解锁更多联系人、更多目标、更多复盘记录。</Text>
+              <Text style={styles.featureLine}>年付高级会员：解锁全部功能，包含 AI 冲动倾诉每月 100 次。</Text>
+              <Text style={styles.featureLine}>AI 用完后可买 9.99 加购包；系统按 3 美元成本上限控制，防止成本失控。</Text>
             </View>
 
             {loading ? (
@@ -146,25 +141,31 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
                 {annual && (
                   <TouchableOpacity style={[styles.planCard, selected === 'ANNUAL' && styles.planSelected]} onPress={() => setSelected('ANNUAL')} disabled={purchasing}>
                     <View style={styles.planTopRow}>
-                      <Text style={styles.planName}>包年会员</Text>
+                      <Text style={styles.planName}>年付高级会员</Text>
                       <View style={styles.badge}><Text style={styles.badgeText}>推荐</Text></View>
                     </View>
                     <Text style={styles.planPrice}>{annual.product.priceString} / 年</Text>
-                    <Text style={styles.planSub}>{getPlanSubtitle(annual, '3天免费试用后按年自动续订')}</Text>
+                    <Text style={styles.planSub}>{getPlanSubtitle(annual, '3 天免费试用后按年自动续订')}</Text>
+                    <View style={styles.planBenefits}>
+                      <Text style={styles.planBenefitStrong}>包含：全部基础功能 + AI 每月 100 次</Text>
+                      <Text style={styles.planBenefit}>联系人照片、更多目标、长期复盘、完整急救工具</Text>
+                    </View>
                   </TouchableOpacity>
                 )}
                 {monthly && (
                   <TouchableOpacity style={[styles.planCard, selected === 'MONTHLY' && styles.planSelected]} onPress={() => setSelected('MONTHLY')} disabled={purchasing}>
-                    <View style={styles.planTopRow}>
-                      <Text style={styles.planName}>包月会员</Text>
-                    </View>
+                    <View style={styles.planTopRow}><Text style={styles.planName}>月付基础会员</Text></View>
                     <Text style={styles.planPrice}>{monthly.product.priceString} / 月</Text>
-                    <Text style={styles.planSub}>{getPlanSubtitle(monthly, '3天免费试用后按月自动续订')}</Text>
+                    <Text style={styles.planSub}>{getPlanSubtitle(monthly, '3 天免费试用后按月自动续订')}</Text>
+                    <View style={styles.planBenefits}>
+                      <Text style={styles.planBenefitStrong}>不包含 AI 冲动倾诉</Text>
+                      <Text style={styles.planBenefit}>解锁更多联系人、更多目标和基础复盘功能</Text>
+                    </View>
                   </TouchableOpacity>
                 )}
 
                 <TouchableOpacity style={[styles.primaryBtn, (!selectedPackage || purchasing) && styles.disabledBtn]} onPress={() => handlePurchase(selectedPackage)} disabled={!selectedPackage || purchasing}>
-                  {purchasing ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>开始 3 天免费试用</Text>}
+                  {purchasing ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{selected === 'ANNUAL' ? '开始年付高级会员试用' : '开始月付基础会员试用'}</Text>}
                 </TouchableOpacity>
               </View>
             ) : (
@@ -178,13 +179,12 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
             )}
 
             <Text style={styles.disclaimer}>
-              付款将通过你的 Apple ID 处理。免费试用结束后会自动续订，除非在当前周期结束前至少24小时取消。你可以随时在 Apple ID 的订阅管理中取消。删除 App 或删除本地账号不会自动取消 Apple 订阅。
+              付款通过 Apple ID 处理。试用结束后会自动续订，除非在当前周期结束前至少 24 小时取消。删除 App 不会自动取消 Apple 订阅。
             </Text>
-
             <View style={styles.linkRow}>
               <TouchableOpacity onPress={handleRestore} disabled={purchasing}><Text style={styles.linkText}>恢复购买</Text></TouchableOpacity>
               <Text style={styles.dot}>·</Text>
-              <TouchableOpacity onPress={openManageSubscription}><Text style={styles.linkText}>管理订阅</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => Linking.openURL('https://apps.apple.com/account/subscriptions')}><Text style={styles.linkText}>管理订阅</Text></TouchableOpacity>
             </View>
             <View style={styles.linkRow}>
               <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}><Text style={styles.legalLink}>隐私政策</Text></TouchableOpacity>
@@ -212,10 +212,8 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: 'bold', color: '#2E7D32', textAlign: 'center', marginBottom: 8 },
   subtitle: { fontSize: 14, color: '#555', textAlign: 'center', lineHeight: 21, marginBottom: 16 },
   featuresCard: { backgroundColor: '#F8FAF7', borderRadius: 18, padding: 14, marginBottom: 16 },
-  featureRow: { flexDirection: 'row', gap: 10, paddingVertical: 8, alignItems: 'flex-start' },
-  featureIcon: { fontSize: 22, width: 30 },
-  featureTitle: { fontSize: 14, color: '#333', fontWeight: 'bold', marginBottom: 2 },
-  featureDesc: { fontSize: 12, color: '#666', lineHeight: 17 },
+  sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 8 },
+  featureLine: { fontSize: 13, color: '#555', lineHeight: 20, marginBottom: 5 },
   loadingBox: { alignItems: 'center', paddingVertical: 24 },
   loadingText: { color: '#777', fontSize: 13, marginTop: 10 },
   plans: { gap: 10 },
@@ -227,6 +225,9 @@ const styles = StyleSheet.create({
   badgeText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
   planPrice: { fontSize: 22, fontWeight: 'bold', color: '#2E7D32', marginBottom: 2 },
   planSub: { fontSize: 12, color: '#777', lineHeight: 17 },
+  planBenefits: { backgroundColor: '#F8FAF7', borderRadius: 10, padding: 10, marginTop: 10 },
+  planBenefitStrong: { fontSize: 12, color: '#2E7D32', fontWeight: 'bold', marginBottom: 4 },
+  planBenefit: { fontSize: 12, color: '#555', lineHeight: 17 },
   primaryBtn: { backgroundColor: '#2E7D32', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 6 },
   disabledBtn: { opacity: 0.65 },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },

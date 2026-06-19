@@ -11,6 +11,7 @@ export type AppUser = {
   id: string;
   email?: string;
   displayName: string;
+  avatarUri?: string;
   role: 'user' | 'admin';
   mode: 'email' | 'guest' | 'apple' | 'google';
   createdAt: string;
@@ -30,12 +31,10 @@ type AuthContextValue = {
   continueAsGuest: () => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
+  updateProfile: (updates: { displayName?: string; avatarUri?: string }) => Promise<void>;
 };
 
-type StoredAccount = AppUser & {
-  passwordHash?: string;
-  passwordSalt?: string;
-};
+type StoredAccount = AppUser & { passwordHash?: string; passwordSalt?: string };
 
 export type SocialSignInPayload = {
   providerUserId: string;
@@ -55,11 +54,11 @@ function normalizeEmail(email: string) {
 
 function makeStableId(seed: string, prefix = 'user') {
   let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
+  for (let i = 0; i < seed.length; i += 1) {
     hash = (hash << 5) - hash + seed.charCodeAt(i);
     hash |= 0;
   }
-  return `${prefix}_${Math.abs(hash).toString(36)}`;
+  return prefix + '_' + Math.abs(hash).toString(36);
 }
 
 function normalizeName(name?: string | null) {
@@ -76,6 +75,7 @@ function publicUser(account: StoredAccount): AppUser {
     id: account.id,
     email: account.email,
     displayName: account.displayName,
+    avatarUri: account.avatarUri,
     role: account.role,
     mode: account.mode,
     createdAt: account.createdAt,
@@ -94,14 +94,11 @@ async function readAccounts(): Promise<StoredAccount[]> {
 }
 
 async function hashPassword(password: string, salt: string) {
-  return Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    `${salt}:${password}`,
-  );
+  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, salt + ':' + password);
 }
 
 function makeSalt() {
-  return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+  return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2);
 }
 
 async function bindRevenueCatUser(userId: string) {
@@ -150,13 +147,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const registerWithEmail = useCallback(async (emailInput: string, password: string, displayName?: string) => {
     const email = normalizeEmail(emailInput);
-    if (!email.includes('@')) throw new Error('请输入有效邮箱');
-    if (password.length < 6) throw new Error('密码至少需要 6 位');
-
+    if (!email.includes('@')) throw new Error('请输入有效邮箱。');
+    if (password.length < 6) throw new Error('密码至少需要 6 位。');
     const users = await readAccounts();
     const existing = users.find((item) => item.mode === 'email' && normalizeEmail(item.email || '') === email);
-    if (existing?.passwordHash) throw new Error('这个邮箱已经注册，请直接登录');
-
+    if (existing?.passwordHash) throw new Error('这个邮箱已经注册，请直接登录。');
     const salt = makeSalt();
     const account: StoredAccount = {
       id: existing?.id || makeStableId(email, 'email'),
@@ -173,29 +168,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const signInWithEmailPassword = useCallback(async (emailInput: string, password: string) => {
     const email = normalizeEmail(emailInput);
-    if (!email.includes('@')) throw new Error('请输入有效邮箱');
-    if (!password) throw new Error('请输入密码');
-
+    if (!email.includes('@')) throw new Error('请输入有效邮箱。');
+    if (!password) throw new Error('请输入密码。');
     const users = await readAccounts();
     const account = users.find((item) => item.mode === 'email' && normalizeEmail(item.email || '') === email);
-    if (!account) throw new Error('没有找到这个邮箱，请先注册');
-    if (!account.passwordHash || !account.passwordSalt) throw new Error('该本地账号还没有密码，请使用注册入口设置密码');
-
+    if (!account) throw new Error('没有找到这个邮箱，请先注册。');
+    if (!account.passwordHash || !account.passwordSalt) throw new Error('这个本地账号还没有密码，请用注册入口设置密码。');
     const passwordHash = await hashPassword(password, account.passwordSalt);
-    if (passwordHash !== account.passwordHash) throw new Error('密码不正确');
-
-    const refreshed: StoredAccount = {
-      ...account,
-      role: isAdminEmail(account.email) ? 'admin' : 'user',
-    };
+    if (passwordHash !== account.passwordHash) throw new Error('密码不正确。');
+    const refreshed: StoredAccount = { ...account, role: isAdminEmail(account.email) ? 'admin' : 'user' };
     await persistUser(publicUser(refreshed), refreshed);
   }, [persistUser]);
 
   const signInWithSocial = useCallback(async (mode: 'apple' | 'google', payload: SocialSignInPayload) => {
     const providerUserId = payload.providerUserId.trim();
-    if (!providerUserId) throw new Error('登录信息不完整，请重试');
-
-    const id = makeStableId(`${mode}:${providerUserId}`, mode);
+    if (!providerUserId) throw new Error('登录信息不完整，请重试。');
+    const id = makeStableId(mode + ':' + providerUserId, mode);
     const users = await readAccounts();
     const existing = users.find((item) => item.id === id);
     const email = payload.email || existing?.email;
@@ -204,6 +192,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       id,
       email: email || undefined,
       displayName,
+      avatarUri: existing?.avatarUri,
       role: isAdminEmail(email) ? 'admin' : 'user',
       mode,
       createdAt: existing?.createdAt || new Date().toISOString(),
@@ -211,28 +200,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
     await persistUser(publicUser(account), account);
   }, [persistUser]);
 
-  const signInWithApple = useCallback((payload: SocialSignInPayload) => {
-    return signInWithSocial('apple', payload);
-  }, [signInWithSocial]);
-
-  const signInWithGoogle = useCallback((payload: SocialSignInPayload) => {
-    return signInWithSocial('google', payload);
-  }, [signInWithSocial]);
+  const signInWithApple = useCallback((payload: SocialSignInPayload) => signInWithSocial('apple', payload), [signInWithSocial]);
+  const signInWithGoogle = useCallback((payload: SocialSignInPayload) => signInWithSocial('google', payload), [signInWithSocial]);
 
   const continueAsGuest = useCallback(async () => {
     let guestId = await AsyncStorage.getItem(GUEST_ID_KEY);
     if (!guestId) {
-      guestId = `guest_${Date.now().toString(36)}`;
+      guestId = 'guest_' + Date.now().toString(36);
       await AsyncStorage.setItem(GUEST_ID_KEY, guestId);
     }
-    const nextUser: AppUser = {
-      id: guestId,
-      displayName: '访客用户',
-      role: 'user',
-      mode: 'guest',
-      createdAt: new Date().toISOString(),
-    };
-    await persistUser(nextUser);
+    await persistUser({ id: guestId, displayName: '访客用户', role: 'user', mode: 'guest', createdAt: new Date().toISOString() });
   }, [persistUser]);
 
   const unlockAdmin = useCallback(async (pin: string) => {
@@ -241,9 +218,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return allowed;
   }, [user?.role]);
 
-  const lockAdmin = useCallback(() => {
-    setAdminUnlocked(false);
-  }, []);
+  const lockAdmin = useCallback(() => setAdminUnlocked(false), []);
 
   const signOut = useCallback(async () => {
     await AsyncStorage.removeItem(CURRENT_USER_KEY);
@@ -260,8 +235,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const deleteAccount = useCallback(async () => {
-    // 当前版本为本地账号：删除账号时同时清除本机保存的戒赌记录、联系人、目标和设置。
+    if (user) {
+      const users = await readAccounts();
+      await AsyncStorage.setItem(SAVED_USERS_KEY, JSON.stringify(users.filter((item) => item.id !== user.id)));
+    }
     await resetAllData();
+    await AsyncStorage.removeItem(CURRENT_USER_KEY);
     setUser(null);
     setAdminUnlocked(false);
     if (Platform.OS === 'ios') {
@@ -272,7 +251,25 @@ export function AuthProvider({ children }: PropsWithChildren) {
         console.log('[Auth] RevenueCat logOut after delete skipped:', error);
       }
     }
-  }, []);
+  }, [user]);
+
+  const updateProfile = useCallback(async (updates: { displayName?: string; avatarUri?: string }) => {
+    if (!user) return;
+    const nextUser: AppUser = {
+      ...user,
+      displayName: updates.displayName?.trim() || user.displayName,
+      avatarUri: updates.avatarUri ?? user.avatarUri,
+    };
+    const users = await readAccounts();
+    const existing = users.find((item) => item.id === user.id);
+    const nextAccount: StoredAccount = { ...(existing ?? nextUser), ...nextUser };
+    const filtered = users.filter((item) => item.id !== user.id);
+    await AsyncStorage.multiSet([
+      [CURRENT_USER_KEY, JSON.stringify(nextUser)],
+      [SAVED_USERS_KEY, JSON.stringify([nextAccount, ...filtered])],
+    ]);
+    setUser(nextUser);
+  }, [user]);
 
   const value = useMemo<AuthContextValue>(() => ({
     user,
@@ -288,7 +285,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     continueAsGuest,
     signOut,
     deleteAccount,
-  }), [adminUnlocked, continueAsGuest, deleteAccount, loading, lockAdmin, registerWithEmail, signInWithApple, signInWithEmailPassword, signInWithGoogle, signOut, unlockAdmin, user]);
+    updateProfile,
+  }), [adminUnlocked, continueAsGuest, deleteAccount, loading, lockAdmin, registerWithEmail, signInWithApple, signInWithEmailPassword, signInWithGoogle, signOut, unlockAdmin, updateProfile, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
