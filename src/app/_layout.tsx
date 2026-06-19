@@ -1,4 +1,5 @@
 import LoginScreen from '@/app/login';
+import FirstProfileSetup from '@/components/FirstProfileSetup';
 import { AuthProvider, useAuth } from '@/auth';
 import { configureRevenueCat } from '@/subscription';
 import { Tabs } from 'expo-router';
@@ -18,6 +19,8 @@ function AppShell() {
   }
 
   if (!user) return <LoginScreen />;
+
+  if (!user.profileComplete) return <FirstProfileSetup />;
 
   return (
     <Tabs

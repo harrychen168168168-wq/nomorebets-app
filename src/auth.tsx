@@ -12,6 +12,7 @@ export type AppUser = {
   email?: string;
   displayName: string;
   avatarUri?: string;
+  profileComplete?: boolean;
   role: 'user' | 'admin';
   mode: 'email' | 'guest' | 'apple' | 'google';
   createdAt: string;
@@ -31,7 +32,7 @@ type AuthContextValue = {
   continueAsGuest: () => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
-  updateProfile: (updates: { displayName?: string; avatarUri?: string }) => Promise<void>;
+  updateProfile: (updates: { displayName?: string; avatarUri?: string; profileComplete?: boolean }) => Promise<void>;
 };
 
 type StoredAccount = AppUser & { passwordHash?: string; passwordSalt?: string };
@@ -76,6 +77,7 @@ function publicUser(account: StoredAccount): AppUser {
     email: account.email,
     displayName: account.displayName,
     avatarUri: account.avatarUri,
+    profileComplete: !!account.profileComplete,
     role: account.role,
     mode: account.mode,
     createdAt: account.createdAt,
@@ -157,6 +159,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       id: existing?.id || makeStableId(email, 'email'),
       email,
       displayName: displayName?.trim() || email.split('@')[0] || '用户',
+      profileComplete: false,
       role: isAdminEmail(email) ? 'admin' : 'user',
       mode: 'email',
       createdAt: existing?.createdAt || new Date().toISOString(),
@@ -193,6 +196,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       email: email || undefined,
       displayName,
       avatarUri: existing?.avatarUri,
+      profileComplete: !!existing?.profileComplete,
       role: isAdminEmail(email) ? 'admin' : 'user',
       mode,
       createdAt: existing?.createdAt || new Date().toISOString(),
@@ -209,7 +213,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       guestId = 'guest_' + Date.now().toString(36);
       await AsyncStorage.setItem(GUEST_ID_KEY, guestId);
     }
-    await persistUser({ id: guestId, displayName: '访客用户', role: 'user', mode: 'guest', createdAt: new Date().toISOString() });
+    await persistUser({ id: guestId, displayName: '访客用户', profileComplete: false, role: 'user', mode: 'guest', createdAt: new Date().toISOString() });
   }, [persistUser]);
 
   const unlockAdmin = useCallback(async (pin: string) => {
@@ -253,12 +257,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, [user]);
 
-  const updateProfile = useCallback(async (updates: { displayName?: string; avatarUri?: string }) => {
+  const updateProfile = useCallback(async (updates: { displayName?: string; avatarUri?: string; profileComplete?: boolean }) => {
     if (!user) return;
     const nextUser: AppUser = {
       ...user,
       displayName: updates.displayName?.trim() || user.displayName,
       avatarUri: updates.avatarUri ?? user.avatarUri,
+      profileComplete: updates.profileComplete ?? user.profileComplete,
     };
     const users = await readAccounts();
     const existing = users.find((item) => item.id === user.id);
