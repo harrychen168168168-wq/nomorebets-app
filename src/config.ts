@@ -13,7 +13,8 @@ export const GOOGLE_WEB_CLIENT_ID = '';
 
 // AI 不能把 API Key 放在 App 前端。这里填写你自己的后端代理地址。
 // 后端负责保存 Groq/OpenAI Key，并返回 { reply: string }。
-export const AI_PROXY_URL = '';
+export const AI_PROXY_URL = 'https://nomorebets-app.onrender.com/ai/chat';
+export const AI_ADDON_10_PRODUCT_ID = 'nomorebets_ai_addon_999';
 
 export const PRIVACY_POLICY_URL = 'https://nezha2capital.com/privacy-policy';
 export const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';

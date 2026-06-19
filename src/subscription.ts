@@ -16,6 +16,8 @@ export type SubscriptionSnapshot = {
   willRenew?: boolean | null;
   managementURL?: string;
   originalAppUserId?: string;
+  productIdentifier?: string;
+  planType?: 'monthly' | 'annual' | 'unknown' | 'none';
   error?: string;
 };
 
@@ -48,10 +50,19 @@ export function getSubscriptionManageUrl(customerInfo?: CustomerInfo | null) {
   return (customerInfo as any)?.managementURL || APPLE_SUBSCRIPTION_MANAGE_URL;
 }
 
+export function inferPlanType(productIdentifier?: string | null): SubscriptionSnapshot['planType'] {
+  const id = String(productIdentifier || '').toLowerCase();
+  if (!id) return 'none';
+  if (id.includes('annual') || id.includes('year') || id.includes('yearly')) return 'annual';
+  if (id.includes('month') || id.includes('monthly')) return 'monthly';
+  return 'unknown';
+}
+
 export async function getSubscriptionSnapshot(): Promise<SubscriptionSnapshot> {
   if (Platform.OS !== 'ios') {
     return {
       isPro: false,
+      planType: 'none',
       checkedAt: new Date().toISOString(),
       managementURL: APPLE_SUBSCRIPTION_MANAGE_URL,
       error: '订阅购买仅在 iOS 真机或 TestFlight / App Store 环境可用。',
@@ -66,6 +77,7 @@ export async function getSubscriptionSnapshot(): Promise<SubscriptionSnapshot> {
     console.log('[Subscription] snapshot failed:', error);
     return {
       isPro: false,
+      planType: 'none',
       checkedAt: new Date().toISOString(),
       managementURL: APPLE_SUBSCRIPTION_MANAGE_URL,
       error: getFriendlyPurchaseError(error),
@@ -76,10 +88,13 @@ export async function getSubscriptionSnapshot(): Promise<SubscriptionSnapshot> {
 export function customerInfoToSnapshot(customerInfo: CustomerInfo): SubscriptionSnapshot {
   const active = getActiveEntitlement(customerInfo);
   const entitlement: any = active?.entitlement;
+  const productIdentifier = entitlement?.productIdentifier ?? entitlement?.product_identifier ?? entitlement?.productId ?? entitlement?.product_id;
 
   return {
     isPro: !!active,
     activeEntitlementId: active?.id,
+    productIdentifier,
+    planType: inferPlanType(productIdentifier),
     expirationDate: entitlement?.expirationDate ?? null,
     willRenew: entitlement?.willRenew ?? null,
     checkedAt: new Date().toISOString(),

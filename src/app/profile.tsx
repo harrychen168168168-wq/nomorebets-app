@@ -54,6 +54,8 @@ export default function ProfilePage() {
   const [newGoalDeadline, setNewGoalDeadline] = useState('');
 
   const isPro = !!subscription?.isPro;
+  const isAnnualPro = subscription?.planType === 'annual';
+  const hasFullAccess = isAnnualPro;
 
   useFocusEffect(
     useCallback(() => {
@@ -81,7 +83,7 @@ export default function ProfilePage() {
   }
 
   function requirePro(featureName: string) {
-    if (isPro) return true;
+    if (hasFullAccess) return true;
     setPaywallFeature(featureName);
     setShowPaywall(true);
     return false;
@@ -120,7 +122,7 @@ export default function ProfilePage() {
   }
 
   function startAddContact() {
-    if (!isPro && contacts.length >= FREE_CONTACT_LIMIT) {
+    if (!hasFullAccess && contacts.length >= FREE_CONTACT_LIMIT) {
       requirePro('添加更多重要联系人');
       return;
     }
@@ -128,7 +130,7 @@ export default function ProfilePage() {
   }
 
   function startAddGoal() {
-    if (!isPro && goals.length >= FREE_GOAL_LIMIT) {
+    if (!hasFullAccess && goals.length >= FREE_GOAL_LIMIT) {
       requirePro('添加更多戒赌目标');
       return;
     }
@@ -137,7 +139,7 @@ export default function ProfilePage() {
 
   async function saveContact() {
     if (!newContactName.trim()) return;
-    if (!isPro && contacts.length >= FREE_CONTACT_LIMIT) {
+    if (!hasFullAccess && contacts.length >= FREE_CONTACT_LIMIT) {
       requirePro('添加更多重要联系人');
       return;
     }
@@ -145,7 +147,7 @@ export default function ProfilePage() {
       name: newContactName.trim(),
       relation: newContactRelation || '重要的人',
       phone: newContactPhone.trim(),
-      photo: isPro ? newContactPhoto : '',
+      photo: hasFullAccess ? newContactPhoto : '',
     };
     const updated = [...contacts, newContact];
     await AsyncStorage.setItem('importantContacts', JSON.stringify(updated));
@@ -165,7 +167,7 @@ export default function ProfilePage() {
 
   async function saveGoal() {
     if (!newGoalTitle.trim()) return;
-    if (!isPro && goals.length >= FREE_GOAL_LIMIT) {
+    if (!hasFullAccess && goals.length >= FREE_GOAL_LIMIT) {
       requirePro('添加更多戒赌目标');
       return;
     }
@@ -311,7 +313,7 @@ export default function ProfilePage() {
         <View style={styles.card}>
           <View style={styles.cardTitleRow}>
             <Text style={styles.cardTitle}>❤️ 重要的人</Text>
-            {!isPro && <Text style={styles.freeBadge}>免费 {contacts.length}/{FREE_CONTACT_LIMIT}</Text>}
+            {!hasFullAccess && <Text style={styles.freeBadge}>免费 {contacts.length}/{FREE_CONTACT_LIMIT}</Text>}
           </View>
           <Text style={styles.cardSub}>危急时刻，他们是你最重要的力量。Pro 可添加更多联系人和照片。</Text>
           {contacts.map((c, i) => (
@@ -330,7 +332,7 @@ export default function ProfilePage() {
               <TextInput style={styles.inputBox} placeholder="姓名" value={newContactName} onChangeText={setNewContactName} />
               <View style={styles.relationRow}>{RELATIONS.map(r => <TouchableOpacity key={r} style={[styles.relationBtn, newContactRelation === r && styles.relationSelected]} onPress={() => setNewContactRelation(r)}><Text style={[styles.relationText, newContactRelation === r && styles.relationTextSelected]}>{r}</Text></TouchableOpacity>)}</View>
               <TextInput style={styles.inputBox} placeholder="电话号码（可选）" value={newContactPhone} onChangeText={setNewContactPhone} keyboardType="phone-pad" />
-              <TouchableOpacity style={[styles.photoBtn, !isPro && styles.photoBtnLocked]} onPress={pickPhoto}>{newContactPhoto ? <Image source={{ uri: newContactPhoto }} style={styles.photoPreview} /> : <Text style={styles.photoBtnText}>{isPro ? '📷 添加照片（可选）' : '🔒 联系人照片为高级功能'}</Text>}</TouchableOpacity>
+              <TouchableOpacity style={[styles.photoBtn, !hasFullAccess && styles.photoBtnLocked]} onPress={pickPhoto}>{newContactPhoto ? <Image source={{ uri: newContactPhoto }} style={styles.photoPreview} /> : <Text style={styles.photoBtnText}>{hasFullAccess ? '📷 添加照片（可选）' : '🔒 联系人照片为高级功能'}</Text>}</TouchableOpacity>
               <View style={styles.formBtns}>
                 <TouchableOpacity style={styles.btnCancel} onPress={() => setActiveSection('')}><Text style={styles.btnCancelText}>取消</Text></TouchableOpacity>
                 <TouchableOpacity style={styles.btnSave} onPress={saveContact}><Text style={styles.btnSaveText}>保存</Text></TouchableOpacity>
@@ -342,7 +344,7 @@ export default function ProfilePage() {
         <View style={styles.card}>
           <View style={styles.cardTitleRow}>
             <Text style={styles.cardTitle}>🎯 我的目标</Text>
-            {!isPro && <Text style={styles.freeBadge}>免费 {goals.length}/{FREE_GOAL_LIMIT}</Text>}
+            {!hasFullAccess && <Text style={styles.freeBadge}>免费 {goals.length}/{FREE_GOAL_LIMIT}</Text>}
           </View>
           <Text style={styles.cardSub}>把节省下来的钱用在真正重要的事上。Pro 可添加更多目标。</Text>
           {goals.map((g, i) => {

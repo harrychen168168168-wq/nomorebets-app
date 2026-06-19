@@ -3,9 +3,11 @@ import PaywallModal from '@/components/PaywallModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { AI_PROXY_URL } from '@/config';
-import { getSubscriptionSnapshot } from '@/subscription';
+import { AI_ADDON_10_PRODUCT_ID, AI_PROXY_URL } from '@/config';
+import { useAuth } from '@/auth';
+import { configureRevenueCat, getSubscriptionSnapshot } from '@/subscription';
 import { Image, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Purchases from 'react-native-purchases';
 
 const MOODS = [
   { emoji: '😰', label: '焦虑' },
@@ -39,6 +41,7 @@ function localSupportReply(text: string) {
 }
 
 export default function EmergencyPage() {
+  const { user } = useAuth();
   const [isWaiting, setIsWaiting] = useState(false);
   const [countdown, setCountdown] = useState(300);
   const [mood, setMood] = useState('');
@@ -55,10 +58,13 @@ export default function EmergencyPage() {
   const [isPro, setIsPro] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [aiUsage, setAiUsage] = useState<{ monthlyLimit?: number; monthlyRemaining?: number; addonCreditCentsRemaining?: number } | null>(null);
+  const [aiNeedsAddon, setAiNeedsAddon] = useState(false);
+  const [aiAddonLoading, setAiAddonLoading] = useState(false);
   useFocusEffect(
     useCallback(() => {
       loadData();
-      getSubscriptionSnapshot().then((snapshot) => setIsPro(snapshot.isPro));
+      getSubscriptionSnapshot().then((snapshot) => setIsPro(snapshot.planType === 'annual'));
     }, [])
   );
 
@@ -80,6 +86,32 @@ export default function EmergencyPage() {
     if (contactData) setContacts(JSON.parse(contactData));
   }
 
+
+  async function buyAiAddon() {
+    if (aiAddonLoading) return;
+    if (!AI_ADDON_10_PRODUCT_ID) {
+      setAiError('AI add-on product is not configured yet.');
+      return;
+    }
+    try {
+      setAiAddonLoading(true);
+      setAiError('');
+      await configureRevenueCat();
+      const products = await Purchases.getProducts([AI_ADDON_10_PRODUCT_ID], Purchases.PRODUCT_CATEGORY.NON_SUBSCRIPTION);
+      const product = products[0];
+      if (!product) {
+        setAiError('AI add-on product is not available yet.');
+        return;
+      }
+      await Purchases.purchaseStoreProduct(product);
+      setAiNeedsAddon(false);
+      setAiError('AI add-on purchased. Send your message again to refresh the remaining credit.');
+    } catch (error: any) {
+      if (!error?.userCancelled) setAiError('AI add-on purchase failed. Please try again later.');
+    } finally {
+      setAiAddonLoading(false);
+    }
+  }
  async function sendAiMessage() {
     if (!aiInput.trim() || aiLoading) return;
     setAiError('');
@@ -104,12 +136,21 @@ export default function EmergencyPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          appUserId: user?.id,
           messages: newMessages.map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.text })),
           safetyContext: 'gambling recovery support, Chinese, short supportive reply, crisis escalation to 988/911',
         }),
       });
-      if (!response.ok) throw new Error(`AI proxy error: ${response.status}`);
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
+      if (data?.usage) setAiUsage(data.usage);
+      if (!response.ok) {
+        setAiNeedsAddon(!!data?.needsAddon || data?.error === 'addon_required');
+        setAiError(data?.error || 'ai_proxy_error');
+        const reply = data.reply || data.fallback || localSupportReply(userMsg);
+        setAiMessages([...newMessages, { role: 'assistant', text: reply }]);
+        return;
+      }
+      setAiNeedsAddon(false);
       const reply = data.reply || data.choices?.[0]?.message?.content || localSupportReply(userMsg);
       setAiMessages([...newMessages, { role: 'assistant', text: reply }]);
     } catch {
@@ -359,6 +400,17 @@ export default function EmergencyPage() {
                   </View>
                 )}
               </ScrollView>
+              {aiUsage ? (
+                <View style={styles.aiUsageBox}>
+                  <Text style={styles.aiUsageText}>AI monthly left: {aiUsage.monthlyRemaining ?? 0}/{aiUsage.monthlyLimit ?? 100}</Text>
+                  <Text style={styles.aiUsageText}>Add-on credit: ${(((aiUsage.addonCreditCentsRemaining ?? 0) / 100).toFixed(2))}</Text>
+                </View>
+              ) : null}
+              {aiNeedsAddon ? (
+                <TouchableOpacity style={styles.aiAddonBtn} onPress={buyAiAddon} disabled={aiAddonLoading}>
+                  <Text style={styles.aiAddonBtnText}>{aiAddonLoading ? 'Buying...' : 'Buy AI add-on pack'}</Text>
+                </TouchableOpacity>
+              ) : null}
               {aiError ? <Text style={styles.aiError}>{aiError}</Text> : null}
               <View style={styles.chatInputRow}>
                 <TextInput
@@ -399,7 +451,7 @@ export default function EmergencyPage() {
         onClose={() => setShowPaywall(false)}
         featureName="AI 冲动倾诉"
         onSuccess={() => {
-          setIsPro(true);
+          getSubscriptionSnapshot().then((snapshot) => setIsPro(snapshot.planType === 'annual'));
           setShowPaywall(false);
         }}
       />
@@ -465,6 +517,10 @@ export default function EmergencyPage() {
   aiOptions: { gap: 4 },
   aiNote: { fontSize: 11, color: '#aaa', textAlign: 'center', marginTop: 8 },
   aiError: { fontSize: 12, color: '#E67E22', backgroundColor: '#FFF8E7', padding: 10, borderRadius: 10, marginBottom: 10, lineHeight: 17 },
+  aiUsageBox: { backgroundColor: '#F8FAF7', borderRadius: 10, padding: 10, marginBottom: 10 },
+  aiUsageText: { fontSize: 12, color: '#2E7D32', lineHeight: 18 },
+  aiAddonBtn: { backgroundColor: '#1565C0', borderRadius: 10, padding: 12, alignItems: 'center', marginBottom: 10 },
+  aiAddonBtnText: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
   chatScroll: { maxHeight: 300, marginBottom: 10 },
   chatBubble: { maxWidth: '85%', borderRadius: 12, padding: 12, marginBottom: 8 },
   chatUser: { alignSelf: 'flex-end', backgroundColor: '#2E7D32' },
