@@ -4,6 +4,7 @@ export const REVENUECAT_IOS_KEY = 'appl_cARPBxsGcMQCnDXFWPDSKMGjWkK';
 export const REVENUECAT_ENTITLEMENT_ID = 'NO MORE BETS Pro';
 export const MONTHLY_PRODUCT_IDS = ['com.nomorebets.app.monthly'];
 export const ANNUAL_PRODUCT_IDS = ['com.nomorebets.app.yearly'];
+export const MUTUAL_PRODUCT_IDS = ['com.nomorebets.app.mutual_yearly'];
 
 export const ADMIN_EMAILS = ['harrychen168168168@gmail.com'];
 export const ADMIN_LOCAL_PIN = '168168';

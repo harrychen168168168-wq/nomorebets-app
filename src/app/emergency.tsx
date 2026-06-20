@@ -56,7 +56,7 @@ export default function EmergencyPage() {
 
   useFocusEffect(useCallback(() => {
     loadData();
-    getSubscriptionSnapshot().then((snapshot) => setIsAnnualPro(snapshot.planType === 'annual'));
+    getSubscriptionSnapshot().then((snapshot) => setIsAnnualPro(snapshot.planType === 'annual' || snapshot.planType === 'mutual'));
   }, [user?.id]));
 
   useEffect(() => {
@@ -177,7 +177,7 @@ export default function EmergencyPage() {
           </View>
         )}
 
-        <View style={styles.header}><Text style={styles.headerTitle}>我想去赌场了</Text><Text style={styles.headerSub}>冲动不是命令。它只是一个感觉。它会过去。</Text></View>
+        <View style={styles.header}><Text style={styles.headerTitle}>我现在想去赌场</Text><Text style={styles.headerSub}>冲动不是命令。它只是一个感觉。它会过去。</Text></View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>此刻你的感受是？</Text>
@@ -220,13 +220,13 @@ export default function EmergencyPage() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>有话想说吗？</Text>
-          <Text style={styles.cardSub}>AI 冲动倾诉仅限年付高级会员。它不代替医生或心理治疗；遇到危险请联系真人或拨打 988 / 911。</Text>
+          <Text style={styles.cardSub}>AI 冲动倾诉包含在家庭守护版中。它不代替医生或心理治疗；遇到危险请联系真人或拨打 988 / 911。</Text>
           {!showAiChat ? (
             <TouchableOpacity style={styles.btnAi} onPress={() => {
               if (!isAnnualPro) { setShowPaywall(true); return; }
               setShowAiChat(true);
               setAiMessages([{ role: 'assistant', text: '我在这里。不管发生了什么，你都可以先跟我说。此刻你感觉怎么样？' }]);
-            }}><Text style={styles.btnAiText}>开始 AI 倾诉（年付高级会员）</Text></TouchableOpacity>
+            }}><Text style={styles.btnAiText}>开始 AI 冲动倾诉（家庭守护版）</Text></TouchableOpacity>
           ) : (
             <View>
               <ScrollView style={styles.chatScroll} nestedScrollEnabled>
@@ -248,7 +248,7 @@ export default function EmergencyPage() {
         </View>
 
         <View style={{ height: 40 }} />
-        <PaywallModal visible={showPaywall} onClose={() => setShowPaywall(false)} featureName="AI 冲动倾诉" onSuccess={() => { getSubscriptionSnapshot().then((snapshot) => setIsAnnualPro(snapshot.planType === 'annual')); setShowPaywall(false); }} />
+        <PaywallModal visible={showPaywall} onClose={() => setShowPaywall(false)} featureName="AI 冲动倾诉" onSuccess={() => { getSubscriptionSnapshot().then((snapshot) => setIsAnnualPro(snapshot.planType === 'annual' || snapshot.planType === 'mutual')); setShowPaywall(false); }} />
       </KeyboardAwareScrollView>
     </PageContainer>
   );

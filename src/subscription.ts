@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
-import { ANNUAL_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, REVENUECAT_ENTITLEMENT_ID, REVENUECAT_IOS_KEY } from './config';
+import { ANNUAL_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, REVENUECAT_ENTITLEMENT_ID, REVENUECAT_IOS_KEY } from './config';
 
 const FALLBACK_ENTITLEMENT_IDS = ['pro', 'premium', 'NO_MORE_BETS_PRO'];
 const ENTITLEMENT_IDS = Array.from(new Set([REVENUECAT_ENTITLEMENT_ID, ...FALLBACK_ENTITLEMENT_IDS].filter(Boolean)));
@@ -8,7 +8,7 @@ const APPLE_SUBSCRIPTION_MANAGE_URL = 'https://apps.apple.com/account/subscripti
 
 let configured = false;
 
-export type PlanType = 'monthly' | 'annual' | 'unknown' | 'none';
+export type PlanType = 'monthly' | 'annual' | 'mutual' | 'unknown' | 'none';
 
 export type SubscriptionSnapshot = {
   isPro: boolean;
@@ -61,6 +61,7 @@ export function inferPlanType(productIdentifier?: string | null): PlanType {
   if (!id) return 'none';
   if (matchesProductId(id, ANNUAL_PRODUCT_IDS)) return 'annual';
   if (matchesProductId(id, MONTHLY_PRODUCT_IDS)) return 'monthly';
+  if (id.includes('mutual') || id.includes('couple') || id.includes('partner') || id.includes('duo')) return 'mutual';
   if (id.includes('annual') || id.includes('year') || id.includes('yearly')) return 'annual';
   if (id.includes('month') || id.includes('monthly')) return 'monthly';
   return 'unknown';

@@ -1,12 +1,12 @@
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { DailyRecord, getTodayString, readDailyRecords, upsertDailyRecord } from '../storage';
 
 const MOODS = ['😊 平静', '😄 开心', '😰 焦虑', '😔 低落', '😤 愤怒', '😴 疲惫'];
-const GAME_TYPES = ['百家乐', '老虎机', '扑克', '21点', '轮盘', '7张', '体育博彩', '麻将', '骰子', '其他'];
+const GAME_TYPES = ['百家乐', '老虎机', '扑克', '21点', '轮盘', '骰子', '其他赌场游戏'];
 
 const MONEY_USES = [
   { icon: '🍽️', label: '家庭聚餐', unit: 80, unitLabel: '次' },
@@ -18,6 +18,7 @@ const MONEY_USES = [
 ];
 
 export default function RecordsPage() {
+  const params = useLocalSearchParams<{ mode?: string }>();
   const today = getTodayString();
   const todayDate = new Date();
   const [activeTab, setActiveTab] = useState('daily');
@@ -61,9 +62,16 @@ export default function RecordsPage() {
     }, [refreshRecords])
   );
 
+  useEffect(() => {
+    if (params.mode === 'relapse') {
+      setActiveTab('daily');
+      setGambled(true);
+    }
+  }, [params.mode]);
+
   async function saveDaily() {
     if (gambled === null) {
-      Alert.alert('请选择今天有没有赌博', '先选择“没有”或“有”，再保存记录。');
+      Alert.alert('请选择今天有没有去赌场', '先选择“没有去赌场”或“去了赌场”，再保存记录。');
       return;
     }
     const newRecord: DailyRecord = {
@@ -126,13 +134,13 @@ export default function RecordsPage() {
     <PageContainer>
       <KeyboardAwareScrollView style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>📋 记录</Text>
+          <Text style={styles.headerTitle}>📋 自救记录</Text>
           <Text style={styles.headerSub}>当前编辑：{selectedDate}</Text>
         </View>
 
         <View style={styles.tabRow}>
           {[
-            { key: 'daily', label: selectedDate === today ? '今日记录' : '编辑记录' },
+            { key: 'daily', label: selectedDate === today ? '自救记录' : '编辑记录' },
             { key: 'calendar', label: '日历' },
             { key: 'history', label: '历史' },
           ].map(tab => (
@@ -151,13 +159,13 @@ export default function RecordsPage() {
             )}
 
             <View style={styles.card}>
-              <Text style={styles.questionTitle}>这一天有没有赌博？</Text>
+              <Text style={styles.questionTitle}>这一天有没有去赌场？</Text>
               <View style={styles.optionRow}>
                 <TouchableOpacity style={[styles.optionBtn, gambled === false && styles.optionGood]} onPress={() => setGambled(false)}>
-                  <Text style={[styles.optionText, gambled === false && styles.optionGoodText]}>✅ 没有</Text>
+                  <Text style={[styles.optionText, gambled === false && styles.optionGoodText]}>✅ 没有去赌场</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.optionBtn, gambled === true && styles.optionBad]} onPress={() => setGambled(true)}>
-                  <Text style={[styles.optionText, gambled === true && styles.optionBadText]}>有</Text>
+                  <Text style={[styles.optionText, gambled === true && styles.optionBadText]}>去了赌场</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -165,12 +173,12 @@ export default function RecordsPage() {
             {gambled === true && (
               <>
                 <View style={styles.card}>
-                  <Text style={styles.questionTitle}>在哪里赌的？</Text>
-                  <TextInput style={styles.inputBox} placeholder="例如：某某赌场、网上平台..." value={location} onChangeText={setLocation} />
+                  <Text style={styles.questionTitle}>在哪里发生的？</Text>
+                  <TextInput style={styles.inputBox} placeholder="例如：某某赌场、赌场停车场、回家路上..." value={location} onChangeText={setLocation} />
                 </View>
 
                 <View style={styles.card}>
-                  <Text style={styles.questionTitle}>赌博类型？</Text>
+                  <Text style={styles.questionTitle}>赌场游戏类型？</Text>
                   <View style={styles.reasonGrid}>
                     {GAME_TYPES.map(item => (
                       <TouchableOpacity key={item} style={[styles.reasonBtn, gameType === item && styles.optionGood]} onPress={() => setGameType(item)}>
@@ -244,7 +252,7 @@ export default function RecordsPage() {
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.questionTitle}>赌博冲动程度？</Text>
+              <Text style={styles.questionTitle}>赌场冲动程度？</Text>
               <View style={styles.impulseRow}>
                 {[1, 2, 3, 4, 5].map(n => (
                   <TouchableOpacity key={n} style={[styles.impulseBtn, impulse === n && styles.impulseSelected]} onPress={() => setImpulse(n)}>
@@ -295,8 +303,8 @@ export default function RecordsPage() {
               })}
             </View>
             <View style={styles.calendarLegend}>
-              <Text style={styles.legendItem}>✅ 无赌博</Text>
-              <Text style={styles.legendItem}>❌ 有赌博</Text>
+              <Text style={styles.legendItem}>✅ 没有去赌场</Text>
+              <Text style={styles.legendItem}>❌ 去了赌场</Text>
               <Text style={styles.legendItem}>空白 未记录</Text>
             </View>
           </View>
@@ -305,13 +313,13 @@ export default function RecordsPage() {
         {activeTab === 'history' && (
           <View>
             {records.length === 0 ? (
-              <View style={styles.emptyCard}><Text style={styles.emptyText}>还没有记录，从今天开始吧！</Text></View>
+              <View style={styles.emptyCard}><Text style={styles.emptyText}>还没有自救记录。从今天开始，先把每一次冲动和选择记下来。</Text></View>
             ) : (
               records.map(record => (
                 <TouchableOpacity key={record.date} style={[styles.historyCard, record.gambled && styles.historyCardBad]} onPress={() => { loadRecordIntoForm(record.date, records); setActiveTab('daily'); }}>
                   <View style={styles.historyHeader}>
                     <Text style={styles.historyDate}>{record.date}</Text>
-                    <Text style={record.gambled ? styles.historyBad : styles.historyGood}>{record.gambled ? '❌ 有赌博' : '✅ 无赌博'}</Text>
+                    <Text style={record.gambled ? styles.historyBad : styles.historyGood}>{record.gambled ? '❌ 去了赌场' : '✅ 没有去赌场'}</Text>
                   </View>
                   {record.gambled && record.location ? <Text style={styles.historyDetail}>📍 {record.location}</Text> : null}
                   {record.gambled && record.gameType ? <Text style={styles.historyDetail}>🎲 {record.gameType}</Text> : null}
