@@ -11,7 +11,7 @@ WebBrowser.maybeCompleteAuthSession();
 type AuthMode = 'login' | 'register';
 
 export default function LoginScreen() {
-  const { registerWithEmail, signInWithEmailPassword, signInWithApple, signInWithGoogle, continueAsGuest } = useAuth();
+  const { registerWithEmail, signInWithEmailPassword, signInWithApple, signInWithGoogle } = useAuth();
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -122,17 +122,6 @@ export default function LoginScreen() {
     }
   }
 
-  async function handleGuest() {
-    try {
-      setLoadingAction('guest');
-      await continueAsGuest();
-      Alert.alert('已进入访客模式', '访客模式数据只保存在本机。');
-    } catch {
-      Alert.alert('无法进入', '请稍后再试。');
-    } finally {
-      setLoadingAction('');
-    }
-  }
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -166,10 +155,7 @@ export default function LoginScreen() {
             <TouchableOpacity style={styles.providerButton} onPress={handleGoogleLogin} disabled={loading}>
               {loadingAction === 'google' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}>使用 Google 登录</Text>}
             </TouchableOpacity>
-          )}
-          <TouchableOpacity style={styles.secondaryButton} onPress={handleGuest} disabled={loading}>
-            <Text style={styles.secondaryText}>先以访客模式进入</Text>
-          </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.infoCard}>

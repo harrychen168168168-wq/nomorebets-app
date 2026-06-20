@@ -136,19 +136,19 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
             {onboardingPrompt ? (
               <View style={styles.recommendCard}>
                 <Text style={styles.recommendTitle}>先开启 7 天免费体验</Text>
-                <Text style={styles.recommendLine}>一个人先自救，建议从家庭守护版开始试用：功能更完整，也能提前准备家人支持。</Text>
-                {mutual ? <Text style={styles.recommendLine}>如果是两个人一起戒赌，建议选择互相守护版，双方各有自己的 AI 额度。</Text> : null}
+                <Text style={styles.recommendLine}>一个人先开始，建议试用家庭守护版：先把提醒、联系人、目标和冲动应对流程准备好。</Text>
+                {mutual ? <Text style={styles.recommendLine}>如果是两个人一起努力，建议试用互相守护版：彼此看见进度，也给对方一个按下暂停的理由。</Text> : null}
                 <Text style={styles.recommendWarn}>重要：邀请码有效期跟主会员剩余时间一致。主会员剩多久，被邀请人就能用多久；正式购买互相守护版时也一样。</Text>
               </View>
             ) : null}
 
             <View style={styles.featuresCard}>
               <Text style={styles.sectionTitle}>计划区别</Text>
-              <Text style={styles.featureLine}>个人自救版：适合自己先开始戒赌场的人，不包含 AI。</Text>
-              <Text style={styles.featureLine}>家庭守护版：适合家人购买，包含全部功能和家庭共享 AI 每月 100 次。</Text>
-              {mutual ? <Text style={styles.featureLine}>互相守护版：适合两个人一起戒赌场，双方各有 AI 每月 100 次。</Text> : null}
-              <Text style={styles.featureLine}>邀请码跟主会员同一天到期，不会比主会员多出额外免费天数。</Text>
-              <Text style={styles.featureLine}>AI 使用有次数限制，避免滥用和成本失控。</Text>
+              <Text style={styles.featureLine}>个人自救版：打卡、记录、目标、紧急联系人等基础自救工具。</Text>
+              <Text style={styles.featureLine}>家庭守护版：解锁全部功能，适合家人帮助守护；AI 每月 100 次为家庭共享额度。</Text>
+              {mutual ? <Text style={styles.featureLine}>互相守护版：适合两个人互相监督；双方各自拥有 AI 每月 100 次。</Text> : null}
+              <Text style={styles.featureLine}>邀请权限跟主会员同一天到期，不会比主会员多出额外免费天数。</Text>
+              <Text style={styles.featureLine}>AI 有次数限制，避免滥用和成本失控。</Text>
             </View>
 
             {loading ? (
@@ -168,7 +168,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                     <Text style={styles.planSub}>{getPlanSubtitle(annual, '7天免费自救体验后按年自动续订')}</Text>
                     <View style={styles.planBenefits}>
                       <Text style={styles.planBenefitStrong}>一顿饭钱，给身边重要的人一整年的陪伴和守护。</Text>
-                      <Text style={styles.planBenefit}>包含全部功能和家庭共享 AI 每月 100 次。AI 倾诉内容不会自动分享。邀请码有效期跟主会员到期时间一致，主会员剩余多久，被邀请人就能用多久。</Text>
+                      <Text style={styles.planBenefit}>适合由家人发起守护。把日常记录、紧急联系人、目标提醒和冲动应对放在一起，关键时刻多一个拉住他的入口。</Text>
                     </View>
                   </TouchableOpacity>
                 )}
@@ -179,7 +179,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                     <Text style={styles.planSub}>{getPlanSubtitle(monthly, '7天免费自救体验后按月自动续订')}</Text>
                     <View style={styles.planBenefits}>
                       <Text style={styles.planBenefitStrong}>一杯咖啡钱，给自己一个月时间，从赌场冲动里慢慢拉回来。</Text>
-                      <Text style={styles.planBenefit}>适合自己先开始戒赌场的人。不包含 AI 和家庭守护。</Text>
+                      <Text style={styles.planBenefit}>适合先建立打卡、记录、紧急联系人和目标提醒，把最难的第一个月撑过去。</Text>
                     </View>
                   </TouchableOpacity>
                 )}
@@ -194,7 +194,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                     <Text style={styles.planSub}>{getPlanSubtitle(mutual, '7天免费自救体验后按年自动续订')}</Text>
                     <View style={styles.planBenefits}>
                       <Text style={styles.planBenefitStrong}>我们相互扶持，一起努力，让生活变得更好。</Text>
-                      <Text style={styles.planBenefit}>双方各有 AI 每月 100 次，额度分开计算，AI 倾诉内容不会自动分享。邀请码有效期跟主会员到期时间一致，主会员剩余多久，被邀请人就能用多久。</Text>
+                      <Text style={styles.planBenefit}>适合朋友、伴侣、兄弟姐妹，或任何想一起戒赌的两个人。不是互相责备，而是一起把生活过得更好。</Text>
                     </View>
                   </TouchableOpacity>
                 )}                <TouchableOpacity style={[styles.primaryBtn, (!selectedPackage || purchasing) && styles.disabledBtn]} onPress={() => handlePurchase(selectedPackage)} disabled={!selectedPackage || purchasing}>
@@ -225,7 +225,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
               <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}><Text style={styles.legalLink}>使用条款</Text></TouchableOpacity>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.laterBtn} disabled={purchasing}>
-              <Text style={styles.laterText}>以后再说，继续使用免费功能</Text>
+              <Text style={styles.laterText}>暂不选择，先进入应用</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
