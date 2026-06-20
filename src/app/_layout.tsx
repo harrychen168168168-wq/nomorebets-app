@@ -1,13 +1,36 @@
 import LoginScreen from '@/app/login';
 import FirstProfileSetup from '@/components/FirstProfileSetup';
+import PaywallModal from '@/components/PaywallModal';
 import { AuthProvider, useAuth } from '@/auth';
 import { configureRevenueCat } from '@/subscription';
+import { loadData, saveData } from '@/storage';
 import { Tabs } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
 function AppShell() {
   const { user, loading } = useAuth();
+  const [showOnboardingPaywall, setShowOnboardingPaywall] = useState(false);
+  const previousProfileComplete = useRef<boolean | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      previousProfileComplete.current = null;
+      setShowOnboardingPaywall(false);
+      return;
+    }
+    const wasComplete = previousProfileComplete.current;
+    const isComplete = !!user.profileComplete;
+    if (wasComplete === false && isComplete) {
+      loadData('onboardingPaywallShown').then(async (shown) => {
+        if (!shown) {
+          await saveData('onboardingPaywallShown', '1');
+          setShowOnboardingPaywall(true);
+        }
+      });
+    }
+    previousProfileComplete.current = isComplete;
+  }, [user?.id, user?.profileComplete]);
 
   if (loading) {
     return (
@@ -23,6 +46,7 @@ function AppShell() {
   if (!user.profileComplete) return <FirstProfileSetup />;
 
   return (
+    <>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#2E7D32',
@@ -46,6 +70,14 @@ function AppShell() {
       <Tabs.Screen name="login" options={{ href: null }} />
       <Tabs.Screen name="explore" options={{ href: null }} />
     </Tabs>
+    <PaywallModal
+      visible={showOnboardingPaywall}
+      defaultPlan="ANNUAL"
+      onboardingPrompt
+      onClose={() => setShowOnboardingPaywall(false)}
+      onSuccess={() => setShowOnboardingPaywall(false)}
+    />
+    </>
   );
 }
 

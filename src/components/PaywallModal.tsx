@@ -9,11 +9,17 @@ type Props = {
   onClose: () => void;
   onSuccess: () => void;
   featureName?: string;
+  defaultPlan?: PlanType;
+  onboardingPrompt?: boolean;
 };
 
-type PlanType = 'ANNUAL' | 'MONTHLY';
+type PlanType = 'ANNUAL' | 'MONTHLY' | 'MUTUAL';
 
 function pickPackage(packages: PurchasesPackage[], type: PlanType): PurchasesPackage | undefined {
+  if (type === 'MUTUAL') {
+    const keywords = ['mutual', 'couple', 'partner', 'duo', 'pair'];
+    return packages.find((p) => keywords.some((keyword) => p.product.identifier.toLowerCase().includes(keyword)));
+  }
   const byType = packages.find((p) => p.packageType === type);
   if (byType) return byType;
   const keywords = type === 'ANNUAL' ? ['yearly', 'annual', 'year'] : ['monthly', 'month'];
@@ -26,7 +32,7 @@ function getPlanSubtitle(pkg: PurchasesPackage, fallback: string) {
   return fallback;
 }
 
-export default function PaywallModal({ visible, onClose, onSuccess, featureName }: Props) {
+export default function PaywallModal({ visible, onClose, onSuccess, featureName, defaultPlan = 'ANNUAL', onboardingPrompt = false }: Props) {
   const [packages, setPackages] = useState<PurchasesPackage[]>([]);
   const [selected, setSelected] = useState<PlanType>('ANNUAL');
   const [loading, setLoading] = useState(true);
@@ -52,7 +58,9 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
       const offerings = await Purchases.getOfferings();
       const pkgs = offerings.current?.availablePackages ?? [];
       setPackages(pkgs);
-      if (pickPackage(pkgs, 'ANNUAL')) setSelected('ANNUAL');
+      if (pickPackage(pkgs, defaultPlan)) setSelected(defaultPlan);
+      else if (pickPackage(pkgs, 'ANNUAL')) setSelected('ANNUAL');
+      else if (pickPackage(pkgs, 'MUTUAL')) setSelected('MUTUAL');
       else if (pickPackage(pkgs, 'MONTHLY')) setSelected('MONTHLY');
       if (pkgs.length === 0) setErrorMsg('暂时无法加载订阅选项，请检查 App Store Connect 与 RevenueCat 产品配置。');
     } catch (error) {
@@ -65,8 +73,9 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
 
   const annual = useMemo(() => pickPackage(packages, 'ANNUAL'), [packages]);
   const monthly = useMemo(() => pickPackage(packages, 'MONTHLY'), [packages]);
-  const selectedPackage = selected === 'ANNUAL' ? annual : monthly;
-  const hasPlans = !!annual || !!monthly;
+  const mutual = useMemo(() => pickPackage(packages, 'MUTUAL'), [packages]);
+  const selectedPackage = selected === 'MUTUAL' ? mutual : selected === 'ANNUAL' ? annual : monthly;
+  const hasPlans = !!annual || !!monthly || !!mutual;
 
   function finishWithSnapshot(customerInfo: any) {
     const snapshot = customerInfoToSnapshot(customerInfo);
@@ -74,11 +83,11 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
       Alert.alert('正在确认订阅', '购买流程已完成，但会员状态还没同步。请稍后点“恢复购买”。');
       return;
     }
-    if (isAiFeature && snapshot.planType !== 'annual') {
-      Alert.alert('AI 仅限年付会员', '你的月付会员已生效，但 AI 冲动倾诉需要年付会员或后续加购包。');
+    if (isAiFeature && snapshot.planType !== 'annual' && snapshot.planType !== 'mutual') {
+      Alert.alert('AI 包含在家庭守护版中', '你的个人自救版已生效，但 AI 冲动倾诉需要家庭守护版、互相守护版或后续加购包。');
       return;
     }
-    Alert.alert('订阅已生效', snapshot.planType === 'annual' ? '年付会员已解锁全部功能。' : '月付基础会员已解锁基础功能。');
+    Alert.alert('订阅已生效', snapshot.planType === 'mutual' ? '互相守护版已解锁。' : snapshot.planType === 'annual' ? '家庭守护版已解锁全部功能。' : '个人自救版已解锁基础功能。');
     onSuccess();
   }
 
@@ -119,16 +128,27 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
           </TouchableOpacity>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
             <View style={styles.heroIcon}><Text style={styles.heroEmoji}>🌱</Text></View>
-            <Text style={styles.title}>NoMoreBets 会员</Text>
+            <Text style={styles.title}>NoMoreBets 自救计划</Text>
             <Text style={styles.subtitle}>
-              {featureName ? '“' + featureName + '”需要对应会员权限。' : '请选择适合你的会员方案。'}月付和年付权益不同，购买前请看清楚。
+              {featureName ? '“' + featureName + '”需要对应计划。' : '请选择适合你的自救计划。'}不同计划权益不同，购买前请看清楚。
             </Text>
 
+            {onboardingPrompt ? (
+              <View style={styles.recommendCard}>
+                <Text style={styles.recommendTitle}>先开启 7 天免费体验</Text>
+                <Text style={styles.recommendLine}>一个人先自救，建议从家庭守护版开始试用：功能更完整，也能提前准备家人支持。</Text>
+                {mutual ? <Text style={styles.recommendLine}>如果是两个人一起戒赌，建议选择互相守护版，双方各有自己的 AI 额度。</Text> : null}
+                <Text style={styles.recommendWarn}>重要：邀请码有效期跟主会员剩余时间一致。主会员剩多久，被邀请人就能用多久；正式购买互相守护版时也一样。</Text>
+              </View>
+            ) : null}
+
             <View style={styles.featuresCard}>
-              <Text style={styles.sectionTitle}>权益差别</Text>
-              <Text style={styles.featureLine}>月付基础会员：适合日常记录，解锁更多联系人、更多目标、更多复盘记录。</Text>
-              <Text style={styles.featureLine}>年付高级会员：解锁全部功能，包含 AI 冲动倾诉每月 100 次。</Text>
-              <Text style={styles.featureLine}>AI 用完后可买 9.99 加购包；系统按 3 美元成本上限控制，防止成本失控。</Text>
+              <Text style={styles.sectionTitle}>计划区别</Text>
+              <Text style={styles.featureLine}>个人自救版：适合自己先开始戒赌场的人，不包含 AI。</Text>
+              <Text style={styles.featureLine}>家庭守护版：适合家人购买，包含全部功能和家庭共享 AI 每月 100 次。</Text>
+              {mutual ? <Text style={styles.featureLine}>互相守护版：适合两个人一起戒赌场，双方各有 AI 每月 100 次。</Text> : null}
+              <Text style={styles.featureLine}>邀请码跟主会员同一天到期，不会比主会员多出额外免费天数。</Text>
+              <Text style={styles.featureLine}>AI 使用有次数限制，避免滥用和成本失控。</Text>
             </View>
 
             {loading ? (
@@ -141,31 +161,44 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName 
                 {annual && (
                   <TouchableOpacity style={[styles.planCard, selected === 'ANNUAL' && styles.planSelected]} onPress={() => setSelected('ANNUAL')} disabled={purchasing}>
                     <View style={styles.planTopRow}>
-                      <Text style={styles.planName}>年付高级会员</Text>
+                      <Text style={styles.planName}>家庭守护版</Text>
                       <View style={styles.badge}><Text style={styles.badgeText}>推荐</Text></View>
                     </View>
                     <Text style={styles.planPrice}>{annual.product.priceString} / 年</Text>
-                    <Text style={styles.planSub}>{getPlanSubtitle(annual, '3 天免费试用后按年自动续订')}</Text>
+                    <Text style={styles.planSub}>{getPlanSubtitle(annual, '7天免费自救体验后按年自动续订')}</Text>
                     <View style={styles.planBenefits}>
-                      <Text style={styles.planBenefitStrong}>包含：全部基础功能 + AI 每月 100 次</Text>
-                      <Text style={styles.planBenefit}>联系人照片、更多目标、长期复盘、完整急救工具</Text>
+                      <Text style={styles.planBenefitStrong}>一顿饭钱，给身边重要的人一整年的陪伴和守护。</Text>
+                      <Text style={styles.planBenefit}>包含全部功能和家庭共享 AI 每月 100 次。AI 倾诉内容不会自动分享。邀请码有效期跟主会员到期时间一致，主会员剩余多久，被邀请人就能用多久。</Text>
                     </View>
                   </TouchableOpacity>
                 )}
                 {monthly && (
                   <TouchableOpacity style={[styles.planCard, selected === 'MONTHLY' && styles.planSelected]} onPress={() => setSelected('MONTHLY')} disabled={purchasing}>
-                    <View style={styles.planTopRow}><Text style={styles.planName}>月付基础会员</Text></View>
+                    <View style={styles.planTopRow}><Text style={styles.planName}>个人自救版</Text></View>
                     <Text style={styles.planPrice}>{monthly.product.priceString} / 月</Text>
-                    <Text style={styles.planSub}>{getPlanSubtitle(monthly, '3 天免费试用后按月自动续订')}</Text>
+                    <Text style={styles.planSub}>{getPlanSubtitle(monthly, '7天免费自救体验后按月自动续订')}</Text>
                     <View style={styles.planBenefits}>
-                      <Text style={styles.planBenefitStrong}>不包含 AI 冲动倾诉</Text>
-                      <Text style={styles.planBenefit}>解锁更多联系人、更多目标和基础复盘功能</Text>
+                      <Text style={styles.planBenefitStrong}>一杯咖啡钱，给自己一个月时间，从赌场冲动里慢慢拉回来。</Text>
+                      <Text style={styles.planBenefit}>适合自己先开始戒赌场的人。不包含 AI 和家庭守护。</Text>
                     </View>
                   </TouchableOpacity>
                 )}
 
-                <TouchableOpacity style={[styles.primaryBtn, (!selectedPackage || purchasing) && styles.disabledBtn]} onPress={() => handlePurchase(selectedPackage)} disabled={!selectedPackage || purchasing}>
-                  {purchasing ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{selected === 'ANNUAL' ? '开始年付高级会员试用' : '开始月付基础会员试用'}</Text>}
+
+                {mutual && (
+                  <TouchableOpacity style={[styles.planCard, selected === 'MUTUAL' && styles.planSelected]} onPress={() => setSelected('MUTUAL')} disabled={purchasing}>
+                    <View style={styles.planTopRow}>
+                      <Text style={styles.planName}>互相守护版</Text>
+                    </View>
+                    <Text style={styles.planPrice}>{mutual.product.priceString} / 年</Text>
+                    <Text style={styles.planSub}>{getPlanSubtitle(mutual, '7天免费自救体验后按年自动续订')}</Text>
+                    <View style={styles.planBenefits}>
+                      <Text style={styles.planBenefitStrong}>我们相互扶持，一起努力，让生活变得更好。</Text>
+                      <Text style={styles.planBenefit}>双方各有 AI 每月 100 次，额度分开计算，AI 倾诉内容不会自动分享。邀请码有效期跟主会员到期时间一致，主会员剩余多久，被邀请人就能用多久。</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}                <TouchableOpacity style={[styles.primaryBtn, (!selectedPackage || purchasing) && styles.disabledBtn]} onPress={() => handlePurchase(selectedPackage)} disabled={!selectedPackage || purchasing}>
+                  {purchasing ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{selected === 'ANNUAL' ? '开始7天家庭守护体验' : selected === 'MUTUAL' ? '开始7天互相守护体验' : '开始7天个人自救体验'}</Text>}
                 </TouchableOpacity>
               </View>
             ) : (
@@ -211,6 +244,10 @@ const styles = StyleSheet.create({
   heroEmoji: { fontSize: 34 },
   title: { fontSize: 24, fontWeight: 'bold', color: '#2E7D32', textAlign: 'center', marginBottom: 8 },
   subtitle: { fontSize: 14, color: '#555', textAlign: 'center', lineHeight: 21, marginBottom: 16 },
+  recommendCard: { backgroundColor: '#FFF8E7', borderRadius: 18, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#F3D493' },
+  recommendTitle: { fontSize: 15, fontWeight: 'bold', color: '#7A4C00', marginBottom: 7 },
+  recommendLine: { fontSize: 13, color: '#6F5A28', lineHeight: 19, marginBottom: 5 },
+  recommendWarn: { fontSize: 12, color: '#9A5A00', lineHeight: 18, fontWeight: 'bold' },
   featuresCard: { backgroundColor: '#F8FAF7', borderRadius: 18, padding: 14, marginBottom: 16 },
   sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 8 },
   featureLine: { fontSize: 13, color: '#555', lineHeight: 20, marginBottom: 5 },

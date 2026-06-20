@@ -2,7 +2,7 @@ import PageContainer from '@/components/PageContainer';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { checkInNoGamble, checkInRelapse, completeAccompany, completeWalk, loadAppState } from '../storage';
+import { checkInNoGamble, completeAccompany, completeWalk, loadAppState } from '../storage';
 
 const QUOTES = [
   '赌场赢的是概率，你赢回的是人生。',
@@ -38,7 +38,6 @@ export default function HomePage() {
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [todayGambled, setTodayGambled] = useState(false);
-  const [showRelapseConfirm, setShowRelapseConfirm] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -78,14 +77,6 @@ export default function HomePage() {
     setTodayGambled(false);
   }
 
-  async function confirmRelapse() {
-    await checkInRelapse();
-    setStreak(0);
-    setTodayChecked(true);
-    setTodayGambled(true);
-    setShowRelapseConfirm(false);
-  }
-
   async function handleWalk() {
     await completeWalk();
     setWalked(true);
@@ -117,7 +108,7 @@ export default function HomePage() {
           </View>
           <Text style={styles.alreadyText}>已坚持</Text>
           <View style={styles.daysRow}><Text style={styles.daysNumber}>{streak}</Text><Text style={styles.daysUnit}>天</Text></View>
-          <Text style={styles.daysDesc}>每一天不赌博，都是新的开始。</Text>
+          <Text style={styles.daysDesc}>每一天不去赌场，都是新的开始。</Text>
           {nextMilestone && (
             <View style={styles.progressRow}>
               <View style={styles.progressBar}><View style={[styles.progressFill, { width: (String(Math.min((streak / nextMilestone.days) * 100, 100)) + '%') as any }]} /></View>
@@ -126,7 +117,7 @@ export default function HomePage() {
           )}
           <View style={styles.quoteBox}><Text style={styles.quoteText}>{QUOTES[quoteIndex]}</Text></View>
           <View style={styles.statsRow}>
-            <View style={styles.statBox}><Text style={styles.statNum}>{monthlyDays}</Text><Text style={styles.statLabel}>本月无赌</Text></View>
+            <View style={styles.statBox}><Text style={styles.statNum}>{monthlyDays}</Text><Text style={styles.statLabel}>本月守住</Text></View>
             <View style={styles.statDivider} />
             <View style={styles.statBox}><Text style={styles.statNum}>${monthlyLoss}</Text><Text style={styles.statLabel}>本月损失</Text></View>
             <View style={styles.statDivider} />
@@ -134,33 +125,27 @@ export default function HomePage() {
           </View>
           {todayChecked && (
             <View style={[styles.checkedBadge, todayGambled && styles.checkedBadgeRed]}>
-              <Text style={[styles.checkedText, todayGambled && styles.checkedTextRed]}>{todayGambled ? '今天已有赌博记录' : '今天已打卡'}</Text>
+              <Text style={[styles.checkedText, todayGambled && styles.checkedTextRed]}>{todayGambled ? '今天已有赌场记录' : '今天已记录'}</Text>
             </View>
           )}
         </View>
 
-        <TouchableOpacity style={[styles.btnGreen, (todayChecked || todayGambled) && styles.btnDisabled]} onPress={handleNoGamble} disabled={todayChecked || todayGambled}>
-          <Text style={styles.btnGreenText}>{todayGambled ? '今天已有赌博记录' : '今天我没有赌博'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.btnOutline} onPress={() => setShowRelapseConfirm(true)}>
-          <Text style={styles.btnOutlineText}>今天没有忍住</Text>
-        </TouchableOpacity>
-        {showRelapseConfirm && (
-          <View style={styles.confirmBox}>
-            <Text style={styles.confirmTitle}>诚实面对，重新出发</Text>
-            <Text style={styles.confirmText}>记录这次失误不是惩罚自己，而是了解自己。你愿意重新开始吗？</Text>
-            <View style={styles.confirmBtns}>
-              <TouchableOpacity style={styles.confirmCancel} onPress={() => setShowRelapseConfirm(false)}><Text style={styles.confirmCancelText}>取消</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.confirmOk} onPress={confirmRelapse}><Text style={styles.confirmOkText}>重新开始</Text></TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        <TouchableOpacity style={styles.btnOrange} onPress={() => router.push('/emergency')}><Text style={styles.btnOrangeText}>我想去赌场了</Text></TouchableOpacity>
-
+                <View style={styles.sceneCard}>
+          <Text style={styles.sceneTitle}>今天你需要哪种帮助？</Text>
+          <Text style={styles.sceneSub}>赌场冲动不一定每天出现，但它来的时候很危险。先选一个最符合你现在情况的入口。</Text>
+          <TouchableOpacity style={styles.btnOrange} onPress={() => router.push('/emergency')}>
+            <Text style={styles.btnOrangeText}>我现在想去赌场</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.btnOutline} onPress={() => router.push({ pathname: '/records', params: { mode: 'relapse' } })}>
+            <Text style={styles.btnOutlineText}>我刚从赌场回来</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.btnGreen, todayChecked && styles.btnDisabled]} onPress={handleNoGamble} disabled={todayChecked}>
+            <Text style={styles.btnGreenText}>{todayGambled ? '今天已有赌场记录' : todayChecked ? '今天已记录' : '我今天没有去赌场'}</Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.taskCard}>
-          <Text style={styles.taskTitle}>今日小目标</Text>
-          <View style={styles.taskRow}><Text style={styles.taskItem}>今天打卡</Text><Text style={[styles.taskStatus, todayChecked && styles.taskDone]}>{todayChecked ? '已完成' : '未完成'}</Text></View>
+          <Text style={styles.taskTitle}>今天先守住一件事</Text>
+          <View style={styles.taskRow}><Text style={styles.taskItem}>今天状态记录</Text><Text style={[styles.taskStatus, todayChecked && styles.taskDone]}>{todayChecked ? '已完成' : '未完成'}</Text></View>
           <TouchableOpacity style={styles.taskRow} onPress={handleWalk}><Text style={styles.taskItem}>出门散步 10 分钟</Text><Text style={[styles.taskStatus, walked && styles.taskDone]}>{walked ? '已完成' : '点击完成'}</Text></TouchableOpacity>
           <TouchableOpacity style={styles.taskRow} onPress={handleAccompany}><Text style={styles.taskItem}>陪伴家人</Text><Text style={[styles.taskStatus, accompanied && styles.taskDone]}>{accompanied ? '已完成' : '点击完成'}</Text></TouchableOpacity>
         </View>
@@ -219,12 +204,12 @@ const styles = StyleSheet.create({
   checkedBadgeRed: { backgroundColor: '#FFF1F1' },
   checkedText: { color: '#2E7D32', fontSize: 13 },
   checkedTextRed: { color: '#D32F2F' },
-  btnGreen: { backgroundColor: '#2E7D32', margin: 16, marginBottom: 8, borderRadius: 12, padding: 18, alignItems: 'center' },
+  btnGreen: { backgroundColor: '#2E7D32', marginTop: 10, borderRadius: 12, padding: 18, alignItems: 'center' },
   btnDisabled: { backgroundColor: '#A5D6A7' },
   btnGreenText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  btnOutline: { backgroundColor: '#fff', margin: 16, marginBottom: 8, borderRadius: 12, padding: 18, alignItems: 'center', borderWidth: 1.5, borderColor: '#ccc' },
+  btnOutline: { backgroundColor: '#fff', marginTop: 10, borderRadius: 12, padding: 18, alignItems: 'center', borderWidth: 1.5, borderColor: '#ccc' },
   btnOutlineText: { color: '#555', fontSize: 18 },
-  btnOrange: { backgroundColor: '#E67E22', margin: 16, marginBottom: 8, borderRadius: 12, padding: 18, alignItems: 'center' },
+  btnOrange: { backgroundColor: '#E67E22', marginTop: 12, borderRadius: 12, padding: 18, alignItems: 'center' },
   btnOrangeText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   confirmBox: { backgroundColor: '#FFF8E7', margin: 16, marginTop: 0, borderRadius: 12, padding: 20 },
   confirmTitle: { fontSize: 16, fontWeight: 'bold', color: '#E67E22', marginBottom: 8 },
@@ -248,4 +233,7 @@ const styles = StyleSheet.create({
   storyCard: { width: 250, backgroundColor: '#fff', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#E6EFE6' },
   storyCardTitle: { fontSize: 15, fontWeight: 'bold', color: '#2E7D32', marginBottom: 8 },
   storyCardText: { fontSize: 13, color: '#444', lineHeight: 20 },
+  sceneCard: { backgroundColor: '#fff', margin: 16, marginTop: 8, marginBottom: 8, borderRadius: 16, padding: 18, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
+  sceneTitle: { fontSize: 18, fontWeight: 'bold', color: '#2E7D32', marginBottom: 8 },
+  sceneSub: { fontSize: 13, color: '#666', lineHeight: 20, marginBottom: 10 },
 });
