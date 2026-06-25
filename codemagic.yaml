@@ -8,6 +8,10 @@ workflows:
       app_store_connect: Codemagic
 
     environment:
+      groups:
+        # Codemagic encrypted group. Add EXPO_PUBLIC_ADMIN_FUNCTION_SECRET_FOR_LOCAL_TESTS here
+        # (Codemagic UI) so the admin secret stays out of git but reaches the build.
+        - nomorebets_secrets
       node: 22
       xcode: latest
       cocoapods: default
