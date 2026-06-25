@@ -144,6 +144,11 @@ export async function upsertDailyRecord(record: DailyRecord) {
   return writeDailyRecords([normalizeRecord(record), ...filtered]);
 }
 
+export async function deleteDailyRecord(date: string) {
+  const existing = await readDailyRecords();
+  return writeDailyRecords(existing.filter((item) => item.date !== date));
+}
+
 async function getStoredLongest() {
   const stored = await getScopedItem(KEYS.LONGEST_STREAK);
   return Number(stored) || 0;

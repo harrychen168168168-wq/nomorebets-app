@@ -18,3 +18,14 @@ export const AI_ADDON_10_PRODUCT_ID = 'nomorebets_ai_addon_999';
 export const PRIVACY_POLICY_URL = 'https://nezha2capital.com/privacy-policy';
 export const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 export const SUPPORT_EMAIL = 'nomorebets@nezha2capital.com';
+
+declare const process: { env?: Record<string, string | undefined> };
+
+function readEnv(name: string) {
+  return process?.env?.[name] || '';
+}
+
+export const SUPABASE_URL = readEnv('EXPO_PUBLIC_SUPABASE_URL');
+export const SUPABASE_ANON_KEY = readEnv('EXPO_PUBLIC_SUPABASE_ANON_KEY');
+export const SUPABASE_FUNCTIONS_URL = readEnv('EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL');
+export const ADMIN_FUNCTION_SECRET_FOR_LOCAL_TESTS = readEnv('EXPO_PUBLIC_ADMIN_FUNCTION_SECRET_FOR_LOCAL_TESTS');

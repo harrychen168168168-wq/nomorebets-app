@@ -59,6 +59,7 @@ export function getSubscriptionManageUrl(customerInfo?: CustomerInfo | null) {
 export function inferPlanType(productIdentifier?: string | null): PlanType {
   const id = normalizeId(productIdentifier);
   if (!id) return 'none';
+  if (matchesProductId(id, MUTUAL_PRODUCT_IDS)) return 'mutual';
   if (matchesProductId(id, ANNUAL_PRODUCT_IDS)) return 'annual';
   if (matchesProductId(id, MONTHLY_PRODUCT_IDS)) return 'monthly';
   if (id.includes('mutual') || id.includes('couple') || id.includes('partner') || id.includes('duo')) return 'mutual';
@@ -83,6 +84,8 @@ function collectProductIds(customerInfo: CustomerInfo, entitlement: any) {
 }
 
 function resolvePlanFromProducts(productIds: string[], fallbackProductId?: string | null): { planType: PlanType; productIdentifier?: string } {
+  const mutual = productIds.find((id) => matchesProductId(id, MUTUAL_PRODUCT_IDS) || inferPlanType(id) === 'mutual');
+  if (mutual) return { planType: 'mutual', productIdentifier: mutual };
   const annual = productIds.find((id) => matchesProductId(id, ANNUAL_PRODUCT_IDS) || inferPlanType(id) === 'annual');
   if (annual) return { planType: 'annual', productIdentifier: annual };
   const monthly = productIds.find((id) => matchesProductId(id, MONTHLY_PRODUCT_IDS) || inferPlanType(id) === 'monthly');

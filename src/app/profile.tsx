@@ -1,5 +1,6 @@
 import { useAuth } from '@/auth';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
+import GuardianSharingPanel from '@/components/GuardianSharingPanel';
 import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
 import { PRIVACY_POLICY_URL, SUPPORT_EMAIL, TERMS_URL } from '@/config';
@@ -237,8 +238,8 @@ export default function ProfilePage() {
     const renewalDate = '到期/续订日期：' + formatSubscriptionDate(subscription?.expirationDate);
     if (isMutualPro) return remaining + ' · ' + renewalDate + ' · 互相守护版：双方各自 AI 每月 100 次。';
     if (isAnnualPro) return remaining + ' · ' + renewalDate + ' · 家庭守护版：含全部功能和家庭共享 AI 每月 100 次。';
-    if (isMonthlyPro) return remaining + ' · ' + renewalDate + ' · 个人自救版：不包含 AI 和家庭守护功能。';
-    return '个人自救版适合自己开始；家庭守护版解锁全部功能和 AI；互相守护版将在产品配置后显示。';
+    if (isMonthlyPro) return remaining + ' · ' + renewalDate + ' · 个人自救版：含 AI 每月 50 次，不包含邀请共享。';
+    return '个人自救版含 AI 每月 50 次；家庭守护版解锁家人守护和共享 AI；互相守护版适合两个人一起戒赌。';
   }
 
   return (
@@ -286,6 +287,8 @@ export default function ProfilePage() {
             <TouchableOpacity style={styles.subscriptionSecondary} onPress={openSubscriptionManagement}><Text style={styles.subscriptionSecondaryText}>管理订阅</Text></TouchableOpacity>
           </View>
         </View>
+
+        <GuardianSharingPanel subscription={subscription} />
 
         {isAdminCandidate && (
           <View style={styles.adminVerifyCard}>

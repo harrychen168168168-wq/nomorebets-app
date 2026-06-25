@@ -2,6 +2,7 @@ import { useAuth } from '@/auth';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
+import { isCommunityConfigured, listGuardianLinks } from '@/community';
 import { AI_ADDON_10_PRODUCT_ID, AI_PROXY_URL } from '@/config';
 import { configureRevenueCat, getSubscriptionSnapshot } from '@/subscription';
 import { useFocusEffect } from 'expo-router';
@@ -46,7 +47,7 @@ export default function EmergencyPage() {
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [showAiChat, setShowAiChat] = useState(false);
-  const [isAnnualPro, setIsAnnualPro] = useState(false);
+  const [isAiEligible, setIsAiEligible] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiUsage, setAiUsage] = useState<{ monthlyLimit?: number; monthlyRemaining?: number; addonCreditCentsRemaining?: number } | null>(null);
@@ -54,10 +55,23 @@ export default function EmergencyPage() {
   const [aiAddonLoading, setAiAddonLoading] = useState(false);
   const [expandedPhoto, setExpandedPhoto] = useState<number | null>(null);
 
+  const refreshAiEligibility = useCallback(async () => {
+    const snapshot = await getSubscriptionSnapshot();
+    let eligible = snapshot.planType === 'monthly' || snapshot.planType === 'annual' || snapshot.planType === 'mutual';
+    // Invited family/mutual guardian members do not have their own subscription, but the AI proxy
+    // grants them shared quota. Let an active guardian link open the chat; the server makes the
+    // final decision (and shows a fallback if the payer's plan is no longer active).
+    if (!eligible && user?.id && isCommunityConfigured()) {
+      const links = await listGuardianLinks(user.id).catch(() => []);
+      eligible = links.length > 0;
+    }
+    setIsAiEligible(eligible);
+  }, [user?.id]);
+
   useFocusEffect(useCallback(() => {
     loadData();
-    getSubscriptionSnapshot().then((snapshot) => setIsAnnualPro(snapshot.planType === 'annual' || snapshot.planType === 'mutual'));
-  }, [user?.id]));
+    refreshAiEligibility();
+  }, [refreshAiEligibility]));
 
   useEffect(() => {
     if (!isWaiting) return;
@@ -220,13 +234,13 @@ export default function EmergencyPage() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>有话想说吗？</Text>
-          <Text style={styles.cardSub}>AI 冲动倾诉包含在家庭守护版中。它不代替医生或心理治疗；遇到危险请联系真人或拨打 988 / 911。</Text>
+          <Text style={styles.cardSub}>AI 冲动倾诉包含在个人自救版、家庭守护版和互相守护版中。它不代替医生或心理治疗；遇到危险请联系真人或拨打 988 / 911。</Text>
           {!showAiChat ? (
             <TouchableOpacity style={styles.btnAi} onPress={() => {
-              if (!isAnnualPro) { setShowPaywall(true); return; }
+              if (!isAiEligible) { setShowPaywall(true); return; }
               setShowAiChat(true);
               setAiMessages([{ role: 'assistant', text: '我在这里。不管发生了什么，你都可以先跟我说。此刻你感觉怎么样？' }]);
-            }}><Text style={styles.btnAiText}>开始 AI 冲动倾诉（家庭守护版）</Text></TouchableOpacity>
+            }}><Text style={styles.btnAiText}>开始 AI 冲动倾诉</Text></TouchableOpacity>
           ) : (
             <View>
               <ScrollView style={styles.chatScroll} nestedScrollEnabled>
@@ -248,7 +262,7 @@ export default function EmergencyPage() {
         </View>
 
         <View style={{ height: 40 }} />
-        <PaywallModal visible={showPaywall} onClose={() => setShowPaywall(false)} featureName="AI 冲动倾诉" onSuccess={() => { getSubscriptionSnapshot().then((snapshot) => setIsAnnualPro(snapshot.planType === 'annual' || snapshot.planType === 'mutual')); setShowPaywall(false); }} />
+        <PaywallModal visible={showPaywall} onClose={() => setShowPaywall(false)} featureName="AI 冲动倾诉" onSuccess={() => { refreshAiEligibility(); setShowPaywall(false); }} />
       </KeyboardAwareScrollView>
     </PageContainer>
   );

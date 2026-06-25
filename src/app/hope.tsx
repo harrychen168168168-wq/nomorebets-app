@@ -1,5 +1,6 @@
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
+import PublicStoriesPanel from '@/components/PublicStoriesPanel';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -178,6 +179,8 @@ export default function HopePage() {
         <View style={styles.header}><Text style={styles.headerTitle}>希望与动力</Text><Text style={styles.headerSub}>每一天都是新的可能。</Text></View>
         <View style={styles.quoteCard}><Text style={styles.quoteLabel}>今日语录</Text><Text style={styles.quoteText}>“{DAILY_QUOTES[quoteIndex]}”</Text></View>
         <View style={styles.choiceCard}><Text style={styles.choiceTitle}>{streak > 0 ? '你已经坚持了 ' + streak + ' 天' : '今天是新的开始'}</Text><Text style={styles.choiceText}>你选择了家人，选择了未来，也选择了真正的自己。</Text></View>
+
+        <PublicStoriesPanel />
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>坚持后的变化</Text>

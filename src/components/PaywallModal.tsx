@@ -83,8 +83,8 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
       Alert.alert('正在确认订阅', '购买流程已完成，但会员状态还没同步。请稍后点“恢复购买”。');
       return;
     }
-    if (isAiFeature && snapshot.planType !== 'annual' && snapshot.planType !== 'mutual') {
-      Alert.alert('AI 包含在家庭守护版中', '你的个人自救版已生效，但 AI 冲动倾诉需要家庭守护版、互相守护版或后续加购包。');
+    if (isAiFeature && snapshot.planType !== 'monthly' && snapshot.planType !== 'annual' && snapshot.planType !== 'mutual') {
+      Alert.alert('AI 暂未解锁', 'AI 冲动倾诉包含在个人自救版、家庭守护版和互相守护版中。');
       return;
     }
     Alert.alert('订阅已生效', snapshot.planType === 'mutual' ? '互相守护版已解锁。' : snapshot.planType === 'annual' ? '家庭守护版已解锁全部功能。' : '个人自救版已解锁基础功能。');
@@ -144,7 +144,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
 
             <View style={styles.featuresCard}>
               <Text style={styles.sectionTitle}>计划区别</Text>
-              <Text style={styles.featureLine}>个人自救版：打卡、记录、目标、紧急联系人等基础自救工具。</Text>
+              <Text style={styles.featureLine}>个人自救版：打卡、记录、目标、紧急联系人等基础自救工具，含 AI 每月 50 次。</Text>
               <Text style={styles.featureLine}>家庭守护版：解锁全部功能，适合家人帮助守护；AI 每月 100 次为家庭共享额度。</Text>
               {mutual ? <Text style={styles.featureLine}>互相守护版：适合两个人互相监督；双方各自拥有 AI 每月 100 次。</Text> : null}
               <Text style={styles.featureLine}>邀请权限跟主会员同一天到期，不会比主会员多出额外免费天数。</Text>
@@ -179,7 +179,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                     <Text style={styles.planSub}>{getPlanSubtitle(monthly, '7天免费自救体验后按月自动续订')}</Text>
                     <View style={styles.planBenefits}>
                       <Text style={styles.planBenefitStrong}>一杯咖啡钱，给自己一个月时间，从赌场冲动里慢慢拉回来。</Text>
-                      <Text style={styles.planBenefit}>适合先建立打卡、记录、紧急联系人和目标提醒，把最难的第一个月撑过去。</Text>
+                      <Text style={styles.planBenefit}>适合先建立打卡、记录、紧急联系人和目标提醒，并使用每月 50 次 AI 冲动倾诉，把最难的第一个月撑过去。</Text>
                     </View>
                   </TouchableOpacity>
                 )}

@@ -1,4 +1,5 @@
 import PageContainer from '@/components/PageContainer';
+import HomeCompanionStories from '@/components/HomeCompanionStories';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -18,12 +19,6 @@ const MILESTONES = [
   { days: 30, emoji: '🌳', label: '一月坚持' },
   { days: 90, emoji: '🏆', label: '三月英雄' },
   { days: 365, emoji: '👑', label: '一年新生' },
-];
-
-const HOME_STORIES = [
-  { title: '从停车场回头', body: '有人曾经在赌场停车场坐了两个小时，最后没有进去。那一天不是完美的一天，却是他人生重新开始的一天。' },
-  { title: '把工资交给未来', body: '发工资那天最危险。先把钱转到安全账户，给家人发一句“帮我守住”，你不是软弱，是在保护未来。' },
-  { title: '只撑过今天', body: '戒赌不用一次证明一辈子。你只需要先撑过今天，明天醒来，你会感谢今晚没有下注的自己。' },
 ];
 
 export default function HomePage() {
@@ -150,20 +145,7 @@ export default function HomePage() {
           <TouchableOpacity style={styles.taskRow} onPress={handleAccompany}><Text style={styles.taskItem}>陪伴家人</Text><Text style={[styles.taskStatus, accompanied && styles.taskDone]}>{accompanied ? '已完成' : '点击完成'}</Text></TouchableOpacity>
         </View>
 
-        <View style={styles.storySection}>
-          <View style={styles.storyHeaderRow}>
-            <Text style={styles.storyTitle}>励志故事</Text>
-            <TouchableOpacity onPress={() => router.push('/hope')}><Text style={styles.storyMore}>查看更多</Text></TouchableOpacity>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.storyScroll}>
-            {HOME_STORIES.map((story) => (
-              <View key={story.title} style={styles.storyCard}>
-                <Text style={styles.storyCardTitle}>{story.title}</Text>
-                <Text style={styles.storyCardText}>{story.body}</Text>
-              </View>
-            ))}
-          </ScrollView>
-        </View>
+        <HomeCompanionStories />
         <View style={{ height: 40 }} />
       </ScrollView>
     </PageContainer>

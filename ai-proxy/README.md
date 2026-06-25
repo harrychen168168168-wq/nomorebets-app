@@ -8,20 +8,21 @@ The mobile app must never call OpenAI/Groq directly. It should call:
 POST /ai/chat
 ```
 
-The proxy verifies RevenueCat membership, blocks non-annual AI use, enforces monthly annual quotas, grants add-on credits from RevenueCat non-subscription purchases, enforces a whole-app monthly budget, caps output tokens, and only then calls the AI provider.
+The proxy verifies RevenueCat membership, enforces monthly plan quotas, grants add-on credits from RevenueCat non-subscription purchases, enforces a whole-app monthly budget, caps output tokens, and only then calls the AI provider.
 
 ## Product Policy
 
 Launch policy:
 
 ```text
-Monthly Pro ($4.99/month): no AI access, basic Pro features only.
-Annual Pro ($34.99/year): all Pro features plus 100 base AI chats per month.
+Monthly Pro ($9.99/month): 50 base AI chats per month.
+Annual Pro ($34.99/year): all Pro features plus 100 shared family AI chats per month.
+Mutual Pro: 100 base AI chats per month per paying subscription account.
 No daily AI limit.
-After 100 monthly AI chats: user must buy an AI add-on pack.
+After the monthly plan quota is used: user must buy an AI add-on pack.
 Add-on credits do not reset monthly. They are consumed by usage until empty.
 If add-on credit remains when a new month starts, the server keeps using the add-on credit first.
-After that add-on credit reaches 0, the current month's 100 base AI chats become available.
+After that add-on credit reaches 0, the current month's base AI chats become available.
 Emergency/local replies cost $0 and do not consume AI quota.
 ```
 
@@ -37,7 +38,7 @@ Billing order:
 
 ```text
 1. If add-on credit is greater than 0, consume add-on credit first.
-2. If add-on credit is 0, use the current month's 100 annual base chats.
+2. If add-on credit is 0, use the current month's plan base chats.
 3. If both are used, require another add-on pack.
 ```
 
@@ -57,11 +58,16 @@ REVENUECAT_SECRET_KEY=...
 REVENUECAT_ENTITLEMENT_ID=NO MORE BETS Pro
 MONTHLY_PRODUCT_IDS=your_monthly_product_id
 ANNUAL_PRODUCT_IDS=your_annual_product_id
+MUTUAL_PRODUCT_IDS=your_mutual_product_id
+MONTHLY_AI_LIMIT=50
 ANNUAL_MONTHLY_AI_LIMIT=100
 AI_ADDON_10_PRODUCT_IDS=your_ai_addon_10_product_id
 AI_ADDON_10_CREDIT_CENTS=300
 GLOBAL_MONTHLY_BUDGET_CENTS=500
 RESERVED_COST_PER_AI_CALL_CENTS=1
+USE_SUPABASE_AI_GROUPS=true
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
 If `REQUIRE_REVENUECAT_PRO=true` and `REVENUECAT_SECRET_KEY` is missing, AI calls are denied. This is intentional.
@@ -70,15 +76,21 @@ If `REQUIRE_REVENUECAT_PRO=true` and `REVENUECAT_SECRET_KEY` is missing, AI call
 
 The server has four independent protections:
 
-1. Monthly Pro users cannot use AI.
-2. Annual Pro users get only `ANNUAL_MONTHLY_AI_LIMIT` base AI chats per month.
+1. Monthly Pro users get only `MONTHLY_AI_LIMIT` base AI chats per month.
+2. Annual Pro and Mutual Pro users get only `ANNUAL_MONTHLY_AI_LIMIT` base AI chats per month.
 3. Add-on credit carries across months and is consumed before the current month's base chats.
 4. `GLOBAL_MONTHLY_BUDGET_CENTS` stops the whole app if total AI spending reaches your safety budget.
+
+When `USE_SUPABASE_AI_GROUPS=true`, invited guardian users can use AI according to Supabase `guardian_links`, `subscription_memberships`, and `ai_quota_groups`:
+
+- Family guardian invited users consume the payer's shared quota key.
+- Mutual guardian invited users get a separate quota key, while their access validity follows the payer's active mutual subscription.
 
 Recommended first launch values:
 
 ```text
 ANNUAL_MONTHLY_AI_LIMIT=100
+MONTHLY_AI_LIMIT=50
 GLOBAL_MONTHLY_BUDGET_CENTS=500
 RESERVED_COST_PER_AI_CALL_CENTS=1
 MAX_OUTPUT_TOKENS=180

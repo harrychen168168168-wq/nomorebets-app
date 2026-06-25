@@ -72,6 +72,8 @@ const config = {
   revenueCatEntitlementId: process.env.REVENUECAT_ENTITLEMENT_ID || 'NO MORE BETS Pro',
   monthlyProductIds: splitList(process.env.MONTHLY_PRODUCT_IDS),
   annualProductIds: splitList(process.env.ANNUAL_PRODUCT_IDS),
+  mutualProductIds: splitList(process.env.MUTUAL_PRODUCT_IDS),
+  monthlyAiLimit: readNumber('MONTHLY_AI_LIMIT', 50),
   annualMonthlyAiLimit: readNumber('ANNUAL_MONTHLY_AI_LIMIT', 100),
   addonPacks: parseAddonPacks(),
   globalMonthlyBudgetCents: readNumber('GLOBAL_MONTHLY_BUDGET_CENTS', 500),
@@ -81,14 +83,16 @@ const config = {
   maxMessages: readNumber('MAX_MESSAGES', 12),
   appSecret: process.env.APP_PROXY_SHARED_SECRET || '',
   usageStorePath: process.env.USAGE_STORE_PATH || './data/usage-ledger.json',
+  supabaseUrl: process.env.SUPABASE_URL || '',
+  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  useSupabaseAiGroups: process.env.USE_SUPABASE_AI_GROUPS === 'true',
 };
 
 const replies = {
   aiDisabled: 'AI is temporarily off. Please use the local emergency steps first.',
   missingUser: 'Please sign in before using AI.',
   emptyMessage: 'Please type how you feel right now.',
-  proRequired: 'AI is available only for active annual Pro members.',
-  monthlyNoAi: 'Monthly Pro includes basic features, but AI requires annual Pro.',
+  proRequired: 'AI is available only for active Pro members.',
   unknownPlan: 'AI is not enabled for this product yet. Please contact support.',
   addonRequired: 'Your monthly AI chats and add-on credit are used. Please buy another AI add-on pack to continue.',
   globalBudget: 'AI is paused by the monthly safety budget. Local support is still available.',
@@ -181,11 +185,20 @@ async function writeLedger(ledger) {
   await fs.writeFile(config.usageStorePath, JSON.stringify(ledger, null, 2), 'utf8');
 }
 
+// Serialize all read-modify-write access to the usage ledger. The proxy is single-instance, so
+// chaining every withLedger call through one promise prevents two concurrent AI requests from
+// reading the same ledger and overwriting each other (which would let users bypass quota/budget).
+let ledgerLock = Promise.resolve();
+
 async function withLedger(update) {
-  const ledger = await readLedger();
-  const result = await update(ledger);
-  await writeLedger(ledger);
-  return result;
+  const run = ledgerLock.then(async () => {
+    const ledger = await readLedger();
+    const result = await update(ledger);
+    await writeLedger(ledger);
+    return result;
+  });
+  ledgerLock = run.then(() => undefined, () => undefined);
+  return run;
 }
 
 function ensureUserUsage(ledger, appUserId) {
@@ -207,9 +220,23 @@ function ensureGlobalUsage(ledger, month) {
 }
 
 function resolvePlan(productId) {
+  if (productId && config.mutualProductIds.includes(productId)) return { type: 'mutual', productId };
   if (productId && config.annualProductIds.includes(productId)) return { type: 'annual', productId };
   if (productId && config.monthlyProductIds.includes(productId)) return { type: 'monthly', productId };
   return { type: 'unknown', productId: productId || '' };
+}
+
+async function supabaseRest(pathname) {
+  if (!config.supabaseUrl || !config.supabaseServiceRoleKey) return null;
+  const response = await fetch(config.supabaseUrl.replace(/\/$/, '') + '/rest/v1/' + pathname, {
+    headers: {
+      apikey: config.supabaseServiceRoleKey,
+      Authorization: `Bearer ${config.supabaseServiceRoleKey}`,
+      Accept: 'application/json',
+    },
+  });
+  if (!response.ok) return null;
+  return response.json();
 }
 
 function findActiveSubscriptionProductId(subscriptions) {
@@ -219,6 +246,8 @@ function findActiveSubscriptionProductId(subscriptions) {
     const expires = subscription?.expires_date ? new Date(subscription.expires_date) : null;
     if (!expires || !Number.isFinite(expires.getTime()) || expires.getTime() > now) activeIds.push(productId);
   }
+  const mutual = activeIds.find((productId) => config.mutualProductIds.includes(productId));
+  if (mutual) return mutual;
   const annual = activeIds.find((productId) => config.annualProductIds.includes(productId));
   if (annual) return annual;
   const monthly = activeIds.find((productId) => config.monthlyProductIds.includes(productId));
@@ -259,7 +288,7 @@ function collectAddonGrants(subscriber) {
 
 async function verifyMembership(appUserId) {
   if (!config.requireRevenueCatPro) {
-    return { ok: true, reason: 'disabled', plan: { type: 'annual', productId: 'local_test' }, addonGrants: [] };
+    return { ok: true, reason: 'disabled', plan: { type: 'annual', productId: 'local_test' }, quotaKey: appUserId, addonGrants: [] };
   }
 
   if (!config.revenueCatSecretKey) return { ok: false, reason: 'missing_revenuecat_secret' };
@@ -291,8 +320,58 @@ async function verifyMembership(appUserId) {
     reason: 'active',
     productId,
     plan: resolvePlan(productId),
+    quotaKey: appUserId,
     addonGrants: collectAddonGrants(subscriber),
   };
+}
+
+async function verifySharedMembership(appUserId) {
+  if (!config.useSupabaseAiGroups) return { ok: false, reason: 'supabase_ai_groups_disabled' };
+  const links = await supabaseRest(
+    'guardian_links?select=*&status=eq.active&or=(owner_user_id.eq.' + encodeURIComponent(appUserId) + ',member_user_id.eq.' + encodeURIComponent(appUserId) + ')&limit=5'
+  );
+  if (!Array.isArray(links) || links.length === 0) return { ok: false, reason: 'no_guardian_link' };
+
+  for (const link of links) {
+    const ownerUserId = String(link.owner_user_id || '');
+    const memberUserId = String(link.member_user_id || '');
+    const membershipRows = await supabaseRest('subscription_memberships?select=*&app_user_id=eq.' + encodeURIComponent(ownerUserId) + '&status=eq.active&limit=1');
+    let membership = Array.isArray(membershipRows) ? membershipRows[0] : null;
+    let ownerPlan = membership ? { type: membership.plan_type, productId: membership.product_id || '' } : null;
+    if (membership) {
+      const expires = membership.expires_at ? new Date(membership.expires_at) : null;
+      if (expires && Number.isFinite(expires.getTime()) && expires.getTime() < Date.now()) continue;
+    } else {
+      const directOwner = await verifyMembership(ownerUserId);
+      if (!directOwner.ok) continue;
+      ownerPlan = directOwner.plan;
+      membership = { product_id: directOwner.productId || ownerPlan.productId || '' };
+    }
+
+    if (link.type === 'family' && ownerPlan?.type === 'annual') {
+      return {
+        ok: true,
+        reason: 'family_guardian_shared',
+        productId: membership.product_id,
+        plan: { type: 'annual', productId: membership.product_id || 'family_guardian' },
+        quotaKey: String(link.ai_quota_group_id || ownerUserId),
+        addonGrants: [],
+      };
+    }
+
+    if (link.type === 'mutual' && ownerPlan?.type === 'mutual') {
+      return {
+        ok: true,
+        reason: 'mutual_guardian_shared',
+        productId: membership.product_id,
+        plan: { type: 'mutual', productId: membership.product_id || 'mutual_guardian' },
+        quotaKey: appUserId === ownerUserId ? ownerUserId : memberUserId,
+        addonGrants: [],
+      };
+    }
+  }
+
+  return { ok: false, reason: 'no_active_shared_membership' };
 }
 
 function applyAddonGrants(userUsage, addonGrants) {
@@ -312,41 +391,31 @@ function applyAddonGrants(userUsage, addonGrants) {
 
 function buildUsage(plan, monthUsage, userUsage, globalUsage) {
   const addonCreditCentsRemaining = Math.max(0, userUsage.addonCreditCents || 0);
+  const monthlyLimit = plan.type === 'monthly' ? config.monthlyAiLimit : plan.type === 'annual' || plan.type === 'mutual' ? config.annualMonthlyAiLimit : 0;
   return {
     plan: plan.type,
-    monthlyLimit: plan.type === 'annual' ? config.annualMonthlyAiLimit : 0,
+    monthlyLimit,
     monthlyUsed: monthUsage.baseCalls || 0,
-    monthlyRemaining:
-      plan.type === 'annual'
-        ? Math.max(0, config.annualMonthlyAiLimit - (monthUsage.baseCalls || 0))
-        : 0,
+    monthlyRemaining: Math.max(0, monthlyLimit - (monthUsage.baseCalls || 0)),
     addonCreditCentsRemaining,
     usingAddonBeforeMonthlyQuota: addonCreditCentsRemaining > 0,
     globalBudgetRemainingCents: Math.max(0, config.globalMonthlyBudgetCents - globalUsage.reservedCents),
   };
 }
 
-async function reserveAiUse(appUserId, plan, addonGrants) {
+async function reserveAiUse(quotaKey, plan, addonGrants) {
   return withLedger(async (ledger) => {
     const month = todayMonth();
-    const userUsage = ensureUserUsage(ledger, appUserId);
+    const userUsage = ensureUserUsage(ledger, quotaKey);
     const globalUsage = ensureGlobalUsage(ledger, month);
     userUsage.monthly[month] ||= { baseCalls: 0, addonCalls: 0, reservedCents: 0 };
     const monthUsage = userUsage.monthly[month];
 
     applyAddonGrants(userUsage, addonGrants);
 
-    if (plan.type === 'monthly') {
-      return {
-        ok: false,
-        status: 403,
-        code: 'monthly_plan_no_ai',
-        message: replies.monthlyNoAi,
-        usage: buildUsage(plan, monthUsage, userUsage, globalUsage),
-      };
-    }
+    const monthlyLimit = plan.type === 'monthly' ? config.monthlyAiLimit : plan.type === 'annual' || plan.type === 'mutual' ? config.annualMonthlyAiLimit : 0;
 
-    if (plan.type !== 'annual') {
+    if (monthlyLimit <= 0) {
       return {
         ok: false,
         status: 403,
@@ -371,9 +440,9 @@ async function reserveAiUse(appUserId, plan, addonGrants) {
       userUsage.addonCreditCents -= config.reservedCostCents;
       monthUsage.addonCalls = (monthUsage.addonCalls || 0) + 1;
       source = 'addon_credit';
-    } else if (monthUsage.baseCalls < config.annualMonthlyAiLimit) {
+    } else if (monthUsage.baseCalls < monthlyLimit) {
       monthUsage.baseCalls += 1;
-      source = 'annual_monthly_quota';
+      source = plan.type + '_monthly_quota';
     } else {
       return {
         ok: false,
@@ -399,15 +468,15 @@ async function reserveAiUse(appUserId, plan, addonGrants) {
   });
 }
 
-async function refundAiUse(appUserId, reservation) {
+async function refundAiUse(quotaKey, reservation) {
   if (!reservation) return;
   await withLedger(async (ledger) => {
-    const userUsage = ensureUserUsage(ledger, appUserId);
+    const userUsage = ensureUserUsage(ledger, quotaKey);
     const globalUsage = ensureGlobalUsage(ledger, reservation.month);
     const monthUsage = userUsage.monthly[reservation.month];
     if (!monthUsage) return {};
 
-    if (reservation.source === 'annual_monthly_quota') {
+    if (String(reservation.source || '').endsWith('_monthly_quota')) {
       monthUsage.baseCalls = Math.max(0, (monthUsage.baseCalls || 0) - 1);
     } else if (reservation.source === 'addon_credit') {
       monthUsage.addonCalls = Math.max(0, (monthUsage.addonCalls || 0) - 1);
@@ -511,6 +580,7 @@ function requireAppSecret(req, res) {
 async function handleChat(req, res) {
   let body = {};
   let appUserId = '';
+  let quotaKey = '';
   let reservation = null;
 
   try {
@@ -540,23 +610,28 @@ async function handleChat(req, res) {
       return;
     }
 
-    const membership = await verifyMembership(appUserId);
+    let membership = await verifyMembership(appUserId);
+    if (!membership.ok) {
+      const sharedMembership = await verifySharedMembership(appUserId);
+      if (sharedMembership.ok) membership = sharedMembership;
+    }
     if (!membership.ok) {
       json(res, 402, {
         reply: replies.proRequired,
-        error: 'annual_pro_required',
+        error: 'pro_required',
         reason: membership.reason,
       });
       return;
     }
 
-    const budget = await reserveAiUse(appUserId, membership.plan, membership.addonGrants);
+    quotaKey = membership.quotaKey || appUserId;
+    const budget = await reserveAiUse(quotaKey, membership.plan, membership.addonGrants);
     if (!budget.ok) {
       json(res, budget.status, {
         reply: budget.message,
         error: budget.code,
         fallback: localSupportReply(text),
-        usage: budget.usage,
+        usage: { ...budget.usage, quotaKey },
         needsAddon: budget.code === 'addon_required',
       });
       return;
@@ -564,10 +639,10 @@ async function handleChat(req, res) {
 
     reservation = budget.reservation;
     const reply = safeText(await callAI(messages), 500) || localSupportReply(text);
-    json(res, 200, { reply, source: config.provider, usage: budget.usage });
+    json(res, 200, { reply, source: config.provider, usage: { ...budget.usage, quotaKey } });
   } catch (error) {
     console.error('[ai/chat]', error);
-    await refundAiUse(appUserId, reservation);
+    await refundAiUse(quotaKey || appUserId, reservation);
     const fallback = localSupportReply(latestUserText(normalizeMessages(body?.messages)));
     json(res, 502, { reply: fallback, error: 'ai_backend_failed' });
   }
@@ -579,8 +654,11 @@ function handleHealth(res) {
     aiEnabled: config.enabled,
     provider: config.provider,
     requireRevenueCatPro: config.requireRevenueCatPro,
-    monthlyAiAllowed: false,
+    monthlyAiAllowed: true,
+    monthlyAiLimit: config.monthlyAiLimit,
     annualMonthlyAiLimit: config.annualMonthlyAiLimit,
+    mutualMonthlyAiLimit: config.annualMonthlyAiLimit,
+    useSupabaseAiGroups: config.useSupabaseAiGroups,
     addonPackCount: config.addonPacks.size,
     globalMonthlyBudgetCents: config.globalMonthlyBudgetCents,
     reservedCostPerAiCallCents: config.reservedCostCents,
@@ -595,7 +673,12 @@ if (process.argv.includes('--check')) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
   if (req.method === 'OPTIONS') {
-    json(res, 204, {});
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Content-Type, X-App-Secret',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    });
+    res.end();
     return;
   }
   if (req.method === 'GET' && url.pathname === '/health') {
