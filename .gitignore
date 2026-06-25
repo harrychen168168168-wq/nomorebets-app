@@ -42,3 +42,4 @@ example
 /ios
 /android
 LOCAL_SECRETS_DO_NOT_COMMIT.txt
+supabase/.temp
