@@ -30,6 +30,15 @@ workflows:
         script: |
           npm install --legacy-peer-deps --no-audit --no-fund
 
+      - name: Load EXPO_PUBLIC env vars
+        script: |
+          # Force EXPO_PUBLIC_* from .env into the build environment so Metro inlines them.
+          # The iOS bundle phase does not reliably pick up the .env file on its own, which
+          # left SUPABASE_URL/ANON_KEY empty in the app ("Supabase not configured").
+          grep -E '^EXPO_PUBLIC_' .env >> "$CM_ENV"
+          echo "Loaded EXPO_PUBLIC vars into build env:"
+          grep -E '^EXPO_PUBLIC_' .env | cut -d= -f1 | sed 's/^/  - /'
+
       - name: Prebuild iOS project
         script: |
           npx expo prebuild --platform ios --clean
@@ -47,7 +56,7 @@ workflows:
         script: |
           cd ios
           agvtool new-marketing-version 1.1.0
-          agvtool new-version -all 12
+          agvtool new-version -all 13
 
       - name: Create export options plist from installed profile
         script: |
