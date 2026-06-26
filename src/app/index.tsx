@@ -3,8 +3,8 @@ import HomeCompanionStories from '@/components/HomeCompanionStories';
 import MoneySavedCard from '@/components/MoneySavedCard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { checkInNoGamble, completeAccompany, completeWalk, loadAppState } from '../storage';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { checkInNoGamble, claimProtectionCardToday, completeAccompany, completeWalk, getProtectionState, loadAppState } from '../storage';
 
 const QUOTES = [
   '赌场赢的是概率，你赢回的是人生。',
@@ -34,6 +34,8 @@ export default function HomePage() {
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [todayGambled, setTodayGambled] = useState(false);
+  const [protectionAvailable, setProtectionAvailable] = useState(0);
+  const [todayProtected, setTodayProtected] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -47,6 +49,9 @@ export default function HomePage() {
         setAccompanied(state.accompaniedToday);
         setMonthlyLoss(state.monthlyLoss);
         setTodayGambled(state.todayGambled);
+        const prot = await getProtectionState();
+        setProtectionAvailable(prot.available);
+        setTodayProtected(prot.todayProtected);
         setLoading(false);
       };
       init();
@@ -61,7 +66,7 @@ export default function HomePage() {
   const currentMilestone = MILESTONES.filter((m) => streak >= m.days).pop() || MILESTONES[0];
   const nextMilestone = MILESTONES.find((m) => streak < m.days);
 
-  async function handleNoGamble() {
+  async function handlePledge() {
     if (todayChecked) return;
     const result = await checkInNoGamble();
     const state = await loadAppState();
@@ -71,6 +76,22 @@ export default function HomePage() {
     setMonthlyLoss(state.monthlyLoss);
     setTodayChecked(true);
     setTodayGambled(false);
+    Alert.alert('承诺已记录 🌱', '你已连续坚持 ' + result.newStreak + ' 天。每一天都算数，明天再来一次。');
+  }
+
+  async function handleUseProtection() {
+    const ok = await claimProtectionCardToday();
+    if (!ok) {
+      Alert.alert('本月保护卡已用完', '每个日历月有 1 张保护卡，下个月会恢复。');
+      return;
+    }
+    const state = await loadAppState();
+    setStreak(state.streak);
+    setLongestStreak(state.longestStreak);
+    const prot = await getProtectionState();
+    setProtectionAvailable(prot.available);
+    setTodayProtected(prot.todayProtected);
+    Alert.alert('已用保护卡 🛡️', '今天的记录不会中断你的连续天数。这不是失败，是重新站稳。');
   }
 
   async function handleWalk() {
@@ -128,6 +149,41 @@ export default function HomePage() {
 
         <MoneySavedCard />
 
+        <View style={styles.pledgeCard}>
+          {todayChecked && !todayGambled ? (
+            <>
+              <Text style={styles.pledgeDoneTitle}>✓ 今天已承诺不赌</Text>
+              <Text style={styles.pledgeStreakBig}>已连续 {streak} 天</Text>
+              <Text style={styles.pledgeWarm}>你今天又为自己赢回了一天。明天再来一次。</Text>
+            </>
+          ) : todayGambled ? (
+            todayProtected ? (
+              <>
+                <Text style={styles.pledgeDoneTitle}>🛡️ 今天已用保护卡</Text>
+                <Text style={styles.pledgeStreakBig}>已连续 {streak} 天</Text>
+                <Text style={styles.pledgeWarm}>连续记录保住了。这不是失败，是重新站稳，明天继续。</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.pledgeWarm}>今天有过高风险记录——这不是结局。明天是新的一天，你随时可以重新承诺。</Text>
+                {protectionAvailable > 0 ? (
+                  <TouchableOpacity style={styles.protectBtn} onPress={handleUseProtection}>
+                    <Text style={styles.protectBtnText}>🛡️ 用一张保护卡保住连续记录（本月剩 {protectionAvailable} 张）</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </>
+            )
+          ) : (
+            <>
+              <Text style={styles.pledgeTitle}>今天的承诺</Text>
+              <Text style={styles.pledgeSub}>每天郑重地对自己说一次“今天不赌”，是最简单也最有力的一步。</Text>
+              <TouchableOpacity style={styles.pledgeBtn} onPress={handlePledge}>
+                <Text style={styles.pledgeBtnText}>我承诺：今天不赌</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
                 <View style={styles.sceneCard}>
           <Text style={styles.sceneTitle}>今天你需要哪种帮助？</Text>
           <Text style={styles.sceneSub}>赌场冲动不一定每天出现，但它来的时候很危险。先选一个最符合你现在情况的入口。</Text>
@@ -136,9 +192,6 @@ export default function HomePage() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.btnOutline} onPress={() => router.push({ pathname: '/records', params: { mode: 'relapse' } })}>
             <Text style={styles.btnOutlineText}>我刚从赌场回来</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.btnGreen, todayChecked && styles.btnDisabled]} onPress={handleNoGamble} disabled={todayChecked}>
-            <Text style={styles.btnGreenText}>{todayGambled ? '今天已有赌场记录' : todayChecked ? '今天已记录' : '我今天没有去赌场'}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.taskCard}>
@@ -210,6 +263,16 @@ const styles = StyleSheet.create({
   taskItem: { fontSize: 14, color: '#444' },
   taskStatus: { fontSize: 13, color: '#bbb' },
   taskDone: { color: '#2E7D32', fontWeight: 'bold' },
+  pledgeCard: { backgroundColor: '#fff', margin: 16, marginTop: 8, marginBottom: 8, borderRadius: 16, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#E6EFE6' },
+  pledgeTitle: { fontSize: 17, fontWeight: 'bold', color: '#2E7D32', marginBottom: 6 },
+  pledgeSub: { fontSize: 13, color: '#777', lineHeight: 20, textAlign: 'center', marginBottom: 14 },
+  pledgeBtn: { backgroundColor: '#2E7D32', borderRadius: 14, paddingVertical: 16, paddingHorizontal: 36, alignItems: 'center', width: '100%' },
+  pledgeBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  pledgeDoneTitle: { fontSize: 16, fontWeight: 'bold', color: '#2E7D32', marginBottom: 4 },
+  pledgeStreakBig: { fontSize: 34, fontWeight: 'bold', color: '#2E7D32', marginBottom: 8 },
+  pledgeWarm: { fontSize: 13, color: '#666', lineHeight: 21, textAlign: 'center' },
+  protectBtn: { backgroundColor: '#FFF8E7', borderWidth: 1.5, borderColor: '#F3D493', borderRadius: 12, paddingVertical: 13, paddingHorizontal: 16, alignItems: 'center', marginTop: 14, width: '100%' },
+  protectBtnText: { color: '#9A6A00', fontSize: 13, fontWeight: 'bold', textAlign: 'center' },
   storySection: { marginTop: 8, paddingVertical: 18 },
   storyHeaderRow: { paddingHorizontal: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   storyTitle: { fontSize: 17, fontWeight: 'bold', color: '#333' },

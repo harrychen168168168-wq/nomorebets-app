@@ -27,7 +27,7 @@ const APP_DATA_KEYS = [
   'myStories',
   'baselineMonthlySpend',
   'savingsGoal',
-  'pledgeDates',
+  'protectedDates',
 ];
 
 export type DailyRecord = {
@@ -162,6 +162,7 @@ export async function calculateStats(recordsInput?: DailyRecord[]) {
   const today = getTodayString();
   const currentMonth = today.slice(0, 7);
   const recordMap = new Map(records.map((record) => [record.date, record]));
+  const protectedSet = new Set(await getProtectedDates());
 
   const monthlyDays = records.filter((record) => record.date.startsWith(currentMonth) && !record.gambled).length;
   const monthlyLoss = records
@@ -172,7 +173,7 @@ export async function calculateStats(recordsInput?: DailyRecord[]) {
   let cursor = today;
   while (true) {
     const record = recordMap.get(cursor);
-    if (record && !record.gambled) {
+    if (record && (!record.gambled || protectedSet.has(cursor))) {
       streak += 1;
       cursor = addDays(cursor, -1);
       continue;
@@ -191,7 +192,7 @@ export async function calculateStats(recordsInput?: DailyRecord[]) {
   for (const record of ascending) {
     const continuous = previousDate === '' || addDays(previousDate, 1) === record.date;
     if (!continuous) running = 0;
-    if (!record.gambled) {
+    if (!record.gambled || protectedSet.has(record.date)) {
       running += 1;
       longestFromRecords = Math.max(longestFromRecords, running);
     } else {
@@ -340,4 +341,39 @@ export async function setBaselineMonthlySpend(amount: number) {
 
 export async function setSavingsGoal(goal: SavingsGoal) {
   await setScopedItem('savingsGoal', JSON.stringify({ title: goal.title.trim().slice(0, 40), amount: Math.max(0, Math.round(Number(goal.amount) || 0)) }));
+}
+
+async function getProtectedDates(): Promise<string[]> {
+  const raw = await getScopedItem('protectedDates');
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((d) => typeof d === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+const PROTECTION_CARDS_PER_MONTH = 1;
+
+export async function getProtectionState() {
+  const today = getTodayString();
+  const month = today.slice(0, 7);
+  const dates = await getProtectedDates();
+  const usedThisMonth = dates.filter((d) => d.startsWith(month)).length;
+  return { available: Math.max(0, PROTECTION_CARDS_PER_MONTH - usedThisMonth), todayProtected: dates.includes(today) };
+}
+
+// Use this month's protection card on today so a slip does not reset the streak (research: streak
+// freezes cut all-or-nothing abandonment). Returns false if none left this month.
+export async function claimProtectionCardToday(): Promise<boolean> {
+  const today = getTodayString();
+  const dates = await getProtectedDates();
+  if (dates.includes(today)) return true;
+  const month = today.slice(0, 7);
+  if (dates.filter((d) => d.startsWith(month)).length >= PROTECTION_CARDS_PER_MONTH) return false;
+  dates.push(today);
+  await setScopedItem('protectedDates', JSON.stringify(dates));
+  await syncAppStateFromRecords();
+  return true;
 }
