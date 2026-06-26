@@ -665,6 +665,35 @@ function handleHealth(res) {
   });
 }
 
+// Lightweight gate check for the app's subscription wall. Does NOT consume AI quota.
+// Returns whether this user may use the app: their own active subscription, or (for an invited
+// guardian member) the payer's live subscription. Reuses the same checks as /ai/chat, so access
+// always follows the payer's real subscription and stops the moment it lapses.
+async function handleAccess(req, res, url) {
+  if (!requireAppSecret(req, res)) return;
+  const appUserId = safeText(url.searchParams.get('appUserId'), 128);
+  if (!appUserId) {
+    json(res, 400, { hasAccess: false, error: 'missing_app_user_id' });
+    return;
+  }
+  try {
+    let membership = await verifyMembership(appUserId);
+    let source = 'own';
+    if (!membership.ok) {
+      membership = await verifySharedMembership(appUserId);
+      source = 'shared';
+    }
+    if (!membership.ok) {
+      json(res, 200, { hasAccess: false, reason: membership.reason });
+      return;
+    }
+    json(res, 200, { hasAccess: true, source, plan: membership.plan?.type || 'unknown' });
+  } catch (error) {
+    console.error('[access]', error);
+    json(res, 200, { hasAccess: false, error: 'access_check_failed' });
+  }
+}
+
 if (process.argv.includes('--check')) {
   console.log('Config OK');
   process.exit(0);
@@ -683,6 +712,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/health') {
     handleHealth(res);
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/access') {
+    await handleAccess(req, res, url);
     return;
   }
   if (req.method === 'POST' && url.pathname === '/ai/chat') {
