@@ -1,5 +1,6 @@
 import PageContainer from '@/components/PageContainer';
 import HomeCompanionStories from '@/components/HomeCompanionStories';
+import MoneySavedCard from '@/components/MoneySavedCard';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -124,6 +125,8 @@ export default function HomePage() {
             </View>
           )}
         </View>
+
+        <MoneySavedCard />
 
                 <View style={styles.sceneCard}>
           <Text style={styles.sceneTitle}>今天你需要哪种帮助？</Text>

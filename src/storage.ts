@@ -25,6 +25,9 @@ const APP_DATA_KEYS = [
   'myStory',
   'myStoryName',
   'myStories',
+  'baselineMonthlySpend',
+  'savingsGoal',
+  'pledgeDates',
 ];
 
 export type DailyRecord = {
@@ -286,4 +289,55 @@ export async function resetAllData() {
 export async function calcMonthlyLoss(): Promise<number> {
   const stats = await calculateStats();
   return stats.monthlyLoss;
+}
+
+function daysBetween(startStr: string, endStr: string) {
+  const [sy, sm, sd] = startStr.split('-').map(Number);
+  const [ey, em, ed] = endStr.split('-').map(Number);
+  const start = new Date(sy, sm - 1, sd).getTime();
+  const end = new Date(ey, em - 1, ed).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return 0;
+  return Math.max(0, Math.round((end - start) / 86400000));
+}
+
+export type SavingsGoal = { title: string; amount: number };
+
+export type MoneyState = {
+  baselineMonthlySpend: number;
+  hasBaseline: boolean;
+  daysSinceQuit: number;
+  savedAmount: number;
+  savingsGoal: SavingsGoal;
+};
+
+// "Money saved" is cumulative and never resets on a slip (key for a 50-75% relapse population):
+// days in recovery × the user's old daily gambling spend.
+export async function loadMoneyState(): Promise<MoneyState> {
+  const today = getTodayString();
+  const [quitStartDate, baselineRaw, goalRaw] = await Promise.all([
+    getScopedItem(KEYS.QUIT_START_DATE),
+    getScopedItem('baselineMonthlySpend'),
+    getScopedItem('savingsGoal'),
+  ]);
+  const baselineMonthlySpend = Math.max(0, Number(baselineRaw) || 0);
+  const daysSinceQuit = daysBetween(quitStartDate || today, today) + 1;
+  const savedAmount = Math.round((baselineMonthlySpend / 30) * daysSinceQuit);
+  let savingsGoal: SavingsGoal = { title: '', amount: 0 };
+  if (goalRaw) {
+    try {
+      const parsed = JSON.parse(goalRaw);
+      savingsGoal = { title: String(parsed.title || ''), amount: Math.max(0, Number(parsed.amount) || 0) };
+    } catch {
+      // ignore malformed goal
+    }
+  }
+  return { baselineMonthlySpend, hasBaseline: baselineMonthlySpend > 0, daysSinceQuit, savedAmount, savingsGoal };
+}
+
+export async function setBaselineMonthlySpend(amount: number) {
+  await setScopedItem('baselineMonthlySpend', String(Math.max(0, Math.round(Number(amount) || 0))));
+}
+
+export async function setSavingsGoal(goal: SavingsGoal) {
+  await setScopedItem('savingsGoal', JSON.stringify({ title: goal.title.trim().slice(0, 40), amount: Math.max(0, Math.round(Number(goal.amount) || 0)) }));
 }
