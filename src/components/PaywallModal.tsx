@@ -225,7 +225,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
               <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}><Text style={styles.legalLink}>使用条款</Text></TouchableOpacity>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.laterBtn} disabled={purchasing}>
-              <Text style={styles.laterText}>稍后再说</Text>
+              <Text style={styles.laterText}>暂不订阅，先免费使用</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>

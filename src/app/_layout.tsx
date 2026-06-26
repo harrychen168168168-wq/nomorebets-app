@@ -1,30 +1,17 @@
 import LoginScreen from '@/app/login';
 import FirstProfileSetup from '@/components/FirstProfileSetup';
 import PaywallModal from '@/components/PaywallModal';
-import SubscriptionGate from '@/components/SubscriptionGate';
 import { AuthProvider, useAuth } from '@/auth';
-import { checkAppAccess, configureRevenueCat } from '@/subscription';
+import { configureRevenueCat } from '@/subscription';
 import { loadData, saveData } from '@/storage';
 import { Tabs } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 
 function AppShell() {
-  const { user, loading, isAdminCandidate } = useAuth();
+  const { user, loading } = useAuth();
   const [showOnboardingPaywall, setShowOnboardingPaywall] = useState(false);
   const previousProfileComplete = useRef<boolean | null>(null);
-  const [access, setAccess] = useState<{ status: 'checking' | 'allowed' | 'locked'; reason?: string }>({ status: 'checking' });
-
-  const refreshAccess = useCallback(async () => {
-    if (!user) return;
-    setAccess({ status: 'checking' });
-    const result = await checkAppAccess(user.id);
-    setAccess(result.allowed ? { status: 'allowed' } : { status: 'locked', reason: result.reason });
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (user?.profileComplete) refreshAccess();
-  }, [user?.profileComplete, refreshAccess]);
 
   useEffect(() => {
     if (!user) {
@@ -57,21 +44,6 @@ function AppShell() {
   if (!user) return <LoginScreen />;
 
   if (!user.profileComplete) return <FirstProfileSetup />;
-
-  // Whole-app subscription gate. Admin accounts (by email) always bypass so the owner can manage
-  // the app and moderate without a subscription. Crisis hotlines stay reachable inside the gate.
-  if (!isAdminCandidate && access.status === 'checking') {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAF7' }}>
-        <ActivityIndicator color="#2E7D32" />
-        <Text style={{ marginTop: 12, color: '#666' }}>正在确认订阅状态...</Text>
-      </View>
-    );
-  }
-
-  if (!isAdminCandidate && access.status === 'locked') {
-    return <SubscriptionGate onUnlock={refreshAccess} reason={access.reason} />;
-  }
 
   return (
     <>

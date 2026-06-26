@@ -50,9 +50,9 @@ export default function ProfilePage() {
   const isMonthlyPro = subscription?.planType === 'monthly';
   const isAnnualPro = subscription?.planType === 'annual';
   const isMutualPro = subscription?.planType === 'mutual';
-  // No free tier anymore: the app-wide subscription gate already guarantees that anyone here is an
-  // entitled user (own subscription, invited guardian member, or admin). So every plan unlocks all
-  // local features (contacts/goals/photos). Plan differences live in AI quota + guardian invites.
+  // Freemium: the local tools (contacts/goals/photos) are free for everyone to maximize retention
+  // and grow the user base. Monetization comes from AI 冲动倾诉 and the guardian feature, which are
+  // gated separately (emergency.tsx for AI, GuardianSharingPanel for invites).
   const hasFullAccess = true;
 
   useEffect(() => {
