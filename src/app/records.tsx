@@ -2,10 +2,11 @@ import { useAuth } from '@/auth';
 import { buildStoryDraftFromRecord, containsSelfHarm, isCommunityConfigured, pushMyGuardianStatus, submitPublicStory } from '@/community';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
+import { AI_PROXY_URL } from '@/config';
 import { DailyRecord, deleteDailyRecord, getTodayString, readDailyRecords, upsertDailyRecord } from '@/storage';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const MOODS = ['平静', '开心', '焦虑', '低落', '愤怒', '疲惫'];
 const GAME_TYPES = ['赌场', '线上赌场', '体育博彩', '彩票', '棋牌/麻将', '交易式赌博冲动', '其他'];
@@ -43,6 +44,8 @@ export default function RecordsPage() {
   const [editing, setEditing] = useState(true);
   const [storyDraft, setStoryDraft] = useState<{ title: string; excerpt: string; body: string } | null>(null);
   const [displayMode, setDisplayMode] = useState<'anonymous' | 'nickname'>('anonymous');
+  const [weekAnalysis, setWeekAnalysis] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
 
   const selectedRecord = records.find((record) => record.date === selectedDate);
 
@@ -171,6 +174,39 @@ export default function RecordsPage() {
     setForm((current) => ({ ...current, ...updates }));
   }
 
+  async function handleWeekAnalysis() {
+    if (!user || analyzing) return;
+    if (!AI_PROXY_URL) { Alert.alert('暂不可用', 'AI 分析暂时不可用。'); return; }
+    setWeekAnalysis('');
+    setAnalyzing(true);
+    try {
+      const recent = records.slice(0, 7).slice().reverse();
+      const summary = recent.length
+        ? recent.map((r) => `${formatDate(r.date)}：${r.gambled ? '去了赌场' : '没有去赌场'} · 冲动 ${r.impulse || 0}/10 · 心情 ${r.mood || '未填'}${r.location ? ' · ' + r.location : ''}`).join('\n')
+        : '这一周还没有记录。';
+      const prompt = '这是我最近一周的戒赌记录，请用温暖、不羞辱的语气帮我分析三点：1) 我的高风险模式或诱因；2) 我做得好的地方；3) 下周一个可执行的小建议。每点一两句话。\n\n' + summary;
+      const res = await fetch(AI_PROXY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appUserId: user.id, messages: [{ role: 'user', content: prompt }] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data?.error === 'pro_required') {
+          Alert.alert('AI 周分析是会员功能', 'AI 周分析包含在订阅里。去“我的”页面订阅后即可使用，也可在“冲动”页直接和 AI 聊。');
+          return;
+        }
+        setWeekAnalysis(data?.reply || data?.fallback || 'AI 暂时不可用，请稍后再试。');
+        return;
+      }
+      setWeekAnalysis(data.reply || 'AI 暂时没有返回内容，请稍后再试。');
+    } catch {
+      Alert.alert('网络问题', 'AI 周分析请求失败，请检查网络后重试。');
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
   return (
     <PageContainer>
       <KeyboardAwareScrollView style={styles.container}>
@@ -288,7 +324,16 @@ export default function RecordsPage() {
             </View>
             <TouchableOpacity style={styles.primaryBtn} onPress={() => loadForEdit(selectedRecord.date)}><Text style={styles.primaryBtnText}>编辑这条记录</Text></TouchableOpacity>
             <TouchableOpacity style={styles.secondaryBtn} onPress={() => prepareStoryDraft(selectedRecord)}><Text style={styles.secondaryBtnText}>生成公开故事草稿</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={() => Alert.alert('一周分析', '后续会接 AI 周分析；当前先保留入口，不影响记录。')}><Text style={styles.secondaryBtnText}>让 AI 分析这一周</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.secondaryBtn, analyzing && { opacity: 0.6 }]} disabled={analyzing} onPress={handleWeekAnalysis}>
+              {analyzing ? <ActivityIndicator color="#2E7D32" /> : <Text style={styles.secondaryBtnText}>让 AI 分析这一周</Text>}
+            </TouchableOpacity>
+            {weekAnalysis ? (
+              <View style={styles.analysisCard}>
+                <Text style={styles.cardTitle}>AI 一周分析</Text>
+                <Text style={styles.rowText}>{weekAnalysis}</Text>
+                <Text style={styles.analysisNote}>仅供参考，不代替专业帮助。如有危险请拨打 988 / 911。</Text>
+              </View>
+            ) : null}
             <TouchableOpacity style={styles.dangerBtn} onPress={removeRecord}><Text style={styles.dangerBtnText}>删除这条记录</Text></TouchableOpacity>
           </View>
         ) : null}
@@ -369,4 +414,6 @@ const styles = StyleSheet.create({
   reviewText: { fontSize: 14, color: '#444', lineHeight: 22, textAlign: 'center' },
   rowText: { fontSize: 14, color: '#444', lineHeight: 24 },
   draftBox: { backgroundColor: '#FFFDF7', margin: 16, borderRadius: 16, padding: 18, borderWidth: 1, borderColor: '#FFE0A8' },
+  analysisCard: { backgroundColor: '#F3F8FF', marginHorizontal: 16, marginTop: 4, marginBottom: 8, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#CFE0F5' },
+  analysisNote: { fontSize: 11, color: '#8893A5', marginTop: 10, lineHeight: 16 },
 });
