@@ -130,7 +130,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
             <View style={styles.heroIcon}><Text style={styles.heroEmoji}>🌱</Text></View>
             <Text style={styles.title}>NoMoreBets 自救计划</Text>
             <Text style={styles.subtitle}>
-              {featureName ? '“' + featureName + '”需要对应计划。' : '请选择适合你的自救计划。'}不同计划权益不同，购买前请看清楚。
+              {featureName ? '“' + featureName + '”需要有效订阅。' : '选择你的订阅方案。'}三种方案都解锁全部功能，区别只在 AI 次数和守护邀请。
             </Text>
 
             {onboardingPrompt ? (
@@ -225,7 +225,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
               <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}><Text style={styles.legalLink}>使用条款</Text></TouchableOpacity>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.laterBtn} disabled={purchasing}>
-              <Text style={styles.laterText}>暂不选择，先进入应用</Text>
+              <Text style={styles.laterText}>稍后再说</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
