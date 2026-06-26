@@ -143,10 +143,10 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
             ) : null}
 
             <View style={styles.featuresCard}>
-              <Text style={styles.sectionTitle}>计划区别</Text>
-              <Text style={styles.featureLine}>个人自救版：打卡、记录、目标、紧急联系人等基础自救工具，含 AI 每月 50 次。</Text>
-              <Text style={styles.featureLine}>家庭守护版：解锁全部功能，适合家人帮助守护；AI 每月 100 次为家庭共享额度。</Text>
-              {mutual ? <Text style={styles.featureLine}>互相守护版：适合两个人互相监督；双方各自拥有 AI 每月 100 次。</Text> : null}
+              <Text style={styles.sectionTitle}>计划区别（都解锁全部功能）</Text>
+              <Text style={styles.featureLine}>个人自救版：解锁全部自救功能，含 AI 每月 50 次，适合一个人开始。</Text>
+              <Text style={styles.featureLine}>家庭守护版：全部功能 + 可邀请一位家人守护；AI 每月 100 次为家庭共享额度。</Text>
+              {mutual ? <Text style={styles.featureLine}>互相守护版：全部功能 + 一对一互相守护；双方各自 AI 每月 100 次。</Text> : null}
               <Text style={styles.featureLine}>邀请权限跟主会员同一天到期，不会比主会员多出额外免费天数。</Text>
               <Text style={styles.featureLine}>AI 有次数限制，避免滥用和成本失控。</Text>
             </View>

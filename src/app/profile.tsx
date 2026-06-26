@@ -50,7 +50,10 @@ export default function ProfilePage() {
   const isMonthlyPro = subscription?.planType === 'monthly';
   const isAnnualPro = subscription?.planType === 'annual';
   const isMutualPro = subscription?.planType === 'mutual';
-  const hasFullAccess = isAnnualPro || isMutualPro;
+  // No free tier anymore: the app-wide subscription gate already guarantees that anyone here is an
+  // entitled user (own subscription, invited guardian member, or admin). So every plan unlocks all
+  // local features (contacts/goals/photos). Plan differences live in AI quota + guardian invites.
+  const hasFullAccess = true;
 
   useEffect(() => {
     setProfileName(user?.displayName || '');
@@ -282,7 +285,7 @@ export default function ProfilePage() {
           </View>
           {subscription?.error && !isPro ? <Text style={styles.subscriptionWarn}>{subscription.error}</Text> : null}
           <View style={styles.subscriptionActions}>
-            {!hasFullAccess && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => { setPaywallFeature(undefined); setShowPaywall(true); }}><Text style={styles.subscriptionPrimaryText}>{isMonthlyPro ? '升级家庭守护版' : '查看订阅'}</Text></TouchableOpacity>}
+            {isMonthlyPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => { setPaywallFeature(undefined); setShowPaywall(true); }}><Text style={styles.subscriptionPrimaryText}>升级家庭守护版</Text></TouchableOpacity>}
             <TouchableOpacity style={styles.subscriptionSecondary} onPress={handleRestorePurchase} disabled={restoreLoading}>{restoreLoading ? <ActivityIndicator color="#2E7D32" /> : <Text style={styles.subscriptionSecondaryText}>恢复购买</Text>}</TouchableOpacity>
             <TouchableOpacity style={styles.subscriptionSecondary} onPress={openSubscriptionManagement}><Text style={styles.subscriptionSecondaryText}>管理订阅</Text></TouchableOpacity>
           </View>
@@ -310,7 +313,7 @@ export default function ProfilePage() {
 
         <View style={styles.card}>
           <View style={styles.cardTitleRow}><Text style={styles.cardTitle}>重要的人</Text>{!hasFullAccess && <Text style={styles.freeBadge}>免费 {contacts.length}/{FREE_CONTACT_LIMIT}</Text>}</View>
-          <Text style={styles.cardSub}>危急时刻，他们是你最重要的力量。家庭守护版可添加更多联系人和照片。</Text>
+          <Text style={styles.cardSub}>危急时刻，他们是你最重要的力量。可以添加多位联系人和照片。</Text>
           {contacts.map((c, i) => (
             <View key={c.name + i} style={styles.contactRow}>
               {c.photo ? <Image source={{ uri: c.photo }} style={styles.contactPhoto} /> : <View style={styles.contactPhotoPlaceholder}><Text style={{ fontSize: 20 }}>👤</Text></View>}
@@ -332,7 +335,7 @@ export default function ProfilePage() {
 
         <View style={styles.card}>
           <View style={styles.cardTitleRow}><Text style={styles.cardTitle}>我的目标</Text>{!hasFullAccess && <Text style={styles.freeBadge}>免费 {goals.length}/{FREE_GOAL_LIMIT}</Text>}</View>
-          <Text style={styles.cardSub}>把节省下来的钱用在真正重要的事上。家庭守护版可添加更多目标。</Text>
+          <Text style={styles.cardSub}>把节省下来的钱用在真正重要的事上。可以添加多个目标。</Text>
           {goals.map((g, i) => {
             const progress = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
             return (
