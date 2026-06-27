@@ -252,6 +252,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const deleteAccount = useCallback(async () => {
+    // Fully delete the auth user server-side (App Store requirement); cascades the cloud rows.
+    // Best-effort: even if the function is unreachable we still clear local data and sign out.
+    try {
+      await supabase.functions.invoke('delete-account');
+    } catch (error) {
+      console.log('[Auth] delete-account function failed:', error);
+    }
     if (user?.id) await cloudDeleteAll(user.id).catch(() => {});
     await resetAllData();
     await supabase.auth.signOut();

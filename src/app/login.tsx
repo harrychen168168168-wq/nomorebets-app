@@ -26,7 +26,7 @@ export default function LoginScreen() {
 
   // Native Google Sign-In returns a backend-verifiable id_token directly (no browser redirect).
   useEffect(() => {
-    if (GOOGLE_IOS_CLIENT_ID) GoogleSignin.configure({ iosClientId: GOOGLE_IOS_CLIENT_ID });
+    if (Platform.OS !== 'web' && GOOGLE_IOS_CLIENT_ID) GoogleSignin.configure({ iosClientId: GOOGLE_IOS_CLIENT_ID });
   }, []);
 
   const primaryLabel = useMemo(() => authMode === 'login' ? '邮箱登录' : '注册邮箱账号', [authMode]);

@@ -91,7 +91,6 @@ function AppShell() {
       <Tabs.Screen name="profile" options={{ title: '我的', tabBarIcon: ({ focused }) => <Text style={{ fontSize: 20 }}>{focused ? '🙋' : '🙍'}</Text> }} />
       <Tabs.Screen name="admin" options={{ href: null }} />
       <Tabs.Screen name="login" options={{ href: null }} />
-      <Tabs.Screen name="explore" options={{ href: null }} />
     </Tabs>
     <PaywallModal
       visible={showOnboardingPaywall}
