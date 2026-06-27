@@ -3,10 +3,22 @@ import FirstProfileSetup from '@/components/FirstProfileSetup';
 import PaywallModal from '@/components/PaywallModal';
 import { AuthProvider, useAuth } from '@/auth';
 import { configureRevenueCat } from '@/subscription';
+import { syncReminders } from '@/notifications';
 import { loadData, saveData } from '@/storage';
+import * as Notifications from 'expo-notifications';
 import { Tabs } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Text, View } from 'react-native';
+
+// Foreground presentation for our local high-risk-time reminders (banner + sound, no badge).
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 function AppShell() {
   const { user, loading } = useAuth();
@@ -31,6 +43,17 @@ function AppShell() {
     }
     previousProfileComplete.current = isComplete;
   }, [user?.id, user?.profileComplete]);
+
+  // Rebuild the rolling local-reminder schedule on sign-in and whenever the app comes to the
+  // foreground (keeps the payday window fresh and re-applies any settings changes).
+  useEffect(() => {
+    if (!user) return;
+    syncReminders();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') syncReminders();
+    });
+    return () => sub.remove();
+  }, [user?.id]);
 
   if (loading) {
     return (

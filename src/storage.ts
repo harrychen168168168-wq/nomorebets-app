@@ -28,6 +28,7 @@ const APP_DATA_KEYS = [
   'baselineMonthlySpend',
   'savingsGoal',
   'protectedDates',
+  'reminderSettings',
 ];
 
 export type DailyRecord = {

@@ -2,6 +2,7 @@ import { useAuth } from '@/auth';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import GuardianSharingPanel from '@/components/GuardianSharingPanel';
 import PageContainer from '@/components/PageContainer';
+import ReminderSettingsCard from '@/components/ReminderSettingsCard';
 import PaywallModal from '@/components/PaywallModal';
 import { PRIVACY_POLICY_URL, SUPPORT_EMAIL, TERMS_URL } from '@/config';
 import { configureRevenueCat, customerInfoToSnapshot, formatSubscriptionDate, getFriendlyPurchaseError, getSubscriptionSnapshot, SubscriptionSnapshot } from '@/subscription';
@@ -292,6 +293,8 @@ export default function ProfilePage() {
         </View>
 
         <GuardianSharingPanel subscription={subscription} />
+
+        <ReminderSettingsCard />
 
         {isAdminCandidate && (
           <View style={styles.adminVerifyCard}>
