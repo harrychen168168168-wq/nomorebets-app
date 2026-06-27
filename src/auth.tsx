@@ -29,6 +29,8 @@ type AuthContextValue = {
   signInWithEmailPassword: (email: string, password: string) => Promise<void>;
   signInWithApple: (payload: SocialSignInPayload) => Promise<void>;
   signInWithGoogle: (payload: SocialSignInPayload) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<void>;
   unlockAdmin: (pin: string) => Promise<boolean>;
   lockAdmin: () => void;
   continueAsGuest: () => Promise<void>;
@@ -88,6 +90,7 @@ function translateAuthError(message: string) {
   if (lower.includes('anonymous sign-ins are disabled')) return '访客登录暂未开启，请稍后再试或改用邮箱登录。';
   if (lower.includes('email not confirmed')) return '请先到邮箱点开确认链接后再登录。';
   if (lower.includes('password should be at least')) return '密码太短，至少需要 6 位。';
+  if (lower.includes('otp') || lower.includes('token has expired') || lower.includes('expired or is invalid')) return '验证码不正确或已过期，请重新获取。';
   return message || '请稍后再试。';
 }
 
@@ -203,6 +206,26 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const signInWithApple = useCallback((payload: SocialSignInPayload) => signInWithSocial('apple', payload), [signInWithSocial]);
   const signInWithGoogle = useCallback((payload: SocialSignInPayload) => signInWithSocial('google', payload), [signInWithSocial]);
 
+  // Email password reset via OTP code (no deep link): Supabase emails a code, the user enters it
+  // here, then we verify it (which opens a recovery session) and set the new password.
+  const requestPasswordReset = useCallback(async (emailInput: string) => {
+    const email = normalizeEmail(emailInput);
+    if (!email.includes('@')) throw new Error('请输入有效邮箱。');
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) throw new Error(translateAuthError(error.message));
+  }, []);
+
+  const confirmPasswordReset = useCallback(async (emailInput: string, code: string, newPassword: string) => {
+    const email = normalizeEmail(emailInput);
+    if (!email.includes('@')) throw new Error('请输入有效邮箱。');
+    if (!code.trim()) throw new Error('请输入邮箱里的验证码。');
+    if (newPassword.length < 6) throw new Error('新密码至少需要 6 位。');
+    const { error: verifyError } = await supabase.auth.verifyOtp({ email, token: code.trim(), type: 'recovery' });
+    if (verifyError) throw new Error(translateAuthError(verifyError.message));
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+    if (updateError) throw new Error(translateAuthError(updateError.message));
+  }, []);
+
   const continueAsGuest = useCallback(async () => {
     const { error } = await supabase.auth.signInAnonymously();
     if (error) throw new Error(translateAuthError(error.message));
@@ -268,13 +291,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
     signInWithEmailPassword,
     signInWithApple,
     signInWithGoogle,
+    requestPasswordReset,
+    confirmPasswordReset,
     unlockAdmin,
     lockAdmin,
     continueAsGuest,
     signOut,
     deleteAccount,
     updateProfile,
-  }), [adminUnlocked, continueAsGuest, deleteAccount, loading, lockAdmin, registerWithEmail, signInWithApple, signInWithEmailPassword, signInWithGoogle, signOut, unlockAdmin, updateProfile, user]);
+  }), [adminUnlocked, confirmPasswordReset, continueAsGuest, deleteAccount, loading, lockAdmin, registerWithEmail, requestPasswordReset, signInWithApple, signInWithEmailPassword, signInWithGoogle, signOut, unlockAdmin, updateProfile, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
