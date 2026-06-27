@@ -1,13 +1,10 @@
 import { useAuth } from '@/auth';
-import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
+import { GOOGLE_IOS_CLIENT_ID, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import * as Google from 'expo-auth-session/providers/google';
 import * as Crypto from 'expo-crypto';
-import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-
-WebBrowser.maybeCompleteAuthSession();
 
 type AuthMode = 'login' | 'register';
 
@@ -19,52 +16,14 @@ export default function LoginScreen() {
   const [displayName, setDisplayName] = useState('');
   const [loadingAction, setLoadingAction] = useState('');
 
-  const googleConfigured = Platform.OS === 'web' ? !!GOOGLE_WEB_CLIENT_ID : !!(GOOGLE_IOS_CLIENT_ID || GOOGLE_WEB_CLIENT_ID);
-  const googlePlaceholderClientId = 'disabled-google-login.apps.googleusercontent.com';
-  const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
-    iosClientId: GOOGLE_IOS_CLIENT_ID || googlePlaceholderClientId,
-    webClientId: GOOGLE_WEB_CLIENT_ID || googlePlaceholderClientId,
-    // Request an OpenID id_token (not just an access token) — Supabase verifies the id_token.
-    scopes: ['openid', 'profile', 'email'],
-  });
+  const googleConfigured = Platform.OS === 'ios' && !!GOOGLE_IOS_CLIENT_ID;
 
   const loading = loadingAction !== '';
 
+  // Native Google Sign-In returns a backend-verifiable id_token directly (no browser redirect).
   useEffect(() => {
-    const finishGoogleLogin = async () => {
-      if (googleResponse?.type !== 'success') return;
-      const idToken = googleResponse.authentication?.idToken || (googleResponse.params as any)?.id_token;
-      const accessToken = googleResponse.authentication?.accessToken;
-      if (!idToken) {
-        Alert.alert('Google 登录失败', '没有拿到 Google 身份令牌，请改用 Apple 或邮箱登录。');
-        return;
-      }
-      try {
-        setLoadingAction('google');
-        let email: string | undefined;
-        let name: string | undefined;
-        if (accessToken) {
-          try {
-            const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + accessToken } });
-            if (profileResponse.ok) {
-              const profile = await profileResponse.json();
-              email = profile.email;
-              name = profile.name;
-            }
-          } catch {
-            // optional enrichment only — the id_token already identifies the user to Supabase
-          }
-        }
-        await signInWithGoogle({ idToken, email, displayName: name });
-        Alert.alert('登录成功', 'Google 账号已登录。');
-      } catch (error: any) {
-        Alert.alert('Google 登录失败', error?.message || '暂时无法登录，请稍后重试。');
-      } finally {
-        setLoadingAction('');
-      }
-    };
-    finishGoogleLogin();
-  }, [googleResponse, signInWithGoogle]);
+    if (GOOGLE_IOS_CLIENT_ID) GoogleSignin.configure({ iosClientId: GOOGLE_IOS_CLIENT_ID });
+  }, []);
 
   const primaryLabel = useMemo(() => authMode === 'login' ? '邮箱登录' : '注册邮箱账号', [authMode]);
 
@@ -128,17 +87,29 @@ export default function LoginScreen() {
   }
 
   async function handleGoogleLogin() {
-    if (!googleConfigured) {
-      Alert.alert('Google 登录未配置', '请先在 src/config.ts 填入 Google Client ID。');
+    if (Platform.OS !== 'ios') {
+      Alert.alert('Google 登录', 'Google 登录需要在 iOS 真机、TestFlight 或 App Store 环境中使用。');
       return;
     }
-    if (!googleRequest) {
-      Alert.alert('Google 登录暂不可用', '登录配置还在准备中，请稍后再试。');
+    if (!googleConfigured) {
+      Alert.alert('Google 登录未配置', '请先在 src/config.ts 填入 Google iOS Client ID。');
       return;
     }
     try {
       setLoadingAction('google');
-      await promptGoogleAsync();
+      await GoogleSignin.hasPlayServices();
+      const result: any = await GoogleSignin.signIn();
+      if (result?.type === 'cancelled') return;
+      const idToken = result?.data?.idToken ?? result?.idToken;
+      const profile = result?.data?.user ?? result?.user;
+      if (!idToken) {
+        Alert.alert('Google 登录失败', '没有拿到 Google 身份令牌，请稍后重试。');
+        return;
+      }
+      await signInWithGoogle({ idToken, email: profile?.email, displayName: profile?.name });
+      Alert.alert('登录成功', 'Google 账号已登录。');
+    } catch (error: any) {
+      if (error?.code !== statusCodes.SIGN_IN_CANCELLED) Alert.alert('Google 登录失败', error?.message || '请稍后再试。');
     } finally {
       setLoadingAction('');
     }
