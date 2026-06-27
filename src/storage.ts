@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { cloudFetchAll, cloudRemove, cloudUpsert, cloudUpsertMany } from './cloudSync';
 
 const CURRENT_USER_KEY = 'auth.currentUser';
 
@@ -63,18 +64,42 @@ async function getScopedItem(key: string) {
   return AsyncStorage.getItem(await scopedKey(key));
 }
 
+// Every local write also mirrors to the cloud (best-effort, fire-and-forget) so the running app
+// stays fully offline-capable while the cloud copy is what survives a reinstall / new device.
 async function setScopedItem(key: string, value: string) {
-  await AsyncStorage.setItem(await scopedKey(key), value);
+  const userId = await getCurrentUserId();
+  await AsyncStorage.setItem('user.' + userId + '.' + key, value);
+  cloudUpsert(userId, key, value).catch(() => {});
 }
 
 async function removeScopedItems(keys: string[]) {
-  const scopedKeys = await Promise.all(keys.map((key) => scopedKey(key)));
-  await AsyncStorage.multiRemove(scopedKeys);
+  const userId = await getCurrentUserId();
+  await AsyncStorage.multiRemove(keys.map((key) => 'user.' + userId + '.' + key));
+  cloudRemove(userId, keys).catch(() => {});
 }
 
 async function scopedMultiSet(entries: [string, string][]) {
-  const scopedEntries = await Promise.all(entries.map(async ([key, value]) => [await scopedKey(key), value] as [string, string]));
-  await AsyncStorage.multiSet(scopedEntries);
+  const userId = await getCurrentUserId();
+  await AsyncStorage.multiSet(entries.map(([key, value]) => ['user.' + userId + '.' + key, value] as [string, string]));
+  cloudUpsertMany(userId, entries).catch(() => {});
+}
+
+// Restore this user's cloud data into the local AsyncStorage cache. Called on login and app launch
+// so a reinstall or new phone gets streak / records / money / contacts / goals / reminders back.
+// Last-write-wins favoring the cloud; returns true if any cloud data was applied.
+export async function pullCloudIntoLocal(): Promise<boolean> {
+  const userId = await getCurrentUserId();
+  if (userId === 'signed_out') return false;
+  let rows: { k: string; v: string }[] = [];
+  try {
+    rows = await cloudFetchAll(userId);
+  } catch {
+    return false;
+  }
+  if (!rows.length) return false;
+  await AsyncStorage.multiSet(rows.map((row) => ['user.' + userId + '.' + row.k, row.v] as [string, string]));
+  await syncAppStateFromRecords();
+  return true;
 }
 
 export function getTodayString() {

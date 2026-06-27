@@ -1,11 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Crypto from 'expo-crypto';
+import type { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import Purchases from 'react-native-purchases';
 import { ADMIN_EMAILS, ADMIN_LOCAL_PIN } from './config';
+import { cloudDeleteAll, cloudGetProfile, cloudUpsertProfile } from './cloudSync';
+import { pullCloudIntoLocal, resetAllData } from './storage';
+import { supabase } from './supabase';
 import { configureRevenueCat } from './subscription';
-import { resetAllData } from './storage';
 
 export type AppUser = {
   id: string;
@@ -35,31 +37,23 @@ type AuthContextValue = {
   updateProfile: (updates: { displayName?: string; avatarUri?: string; profileComplete?: boolean }) => Promise<void>;
 };
 
-type StoredAccount = AppUser & { passwordHash?: string; passwordSalt?: string };
-
+// Apple/Google now hand us the provider's identity token (a JWT) which Supabase verifies natively.
+// rawNonce is only for Apple: the credential is requested with the SHA-256 hash of this nonce, and
+// Supabase re-hashes rawNonce to validate the token's nonce claim (replay protection).
 export type SocialSignInPayload = {
-  providerUserId: string;
+  idToken: string;
+  rawNonce?: string;
   email?: string | null;
   displayName?: string | null;
 };
 
+// storage.ts reads this same key to scope the local cache and to know which cloud rows to sync.
 const CURRENT_USER_KEY = 'auth.currentUser';
-const SAVED_USERS_KEY = 'auth.savedUsers';
-const GUEST_ID_KEY = 'auth.guestId';
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
-}
-
-function makeStableId(seed: string, prefix = 'user') {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  return prefix + '_' + Math.abs(hash).toString(36);
 }
 
 function normalizeName(name?: string | null) {
@@ -71,36 +65,30 @@ function isAdminEmail(email?: string | null) {
   return ADMIN_EMAILS.map(normalizeEmail).includes(normalizeEmail(email));
 }
 
-function publicUser(account: StoredAccount): AppUser {
-  return {
-    id: account.id,
-    email: account.email,
-    displayName: account.displayName,
-    avatarUri: account.avatarUri,
-    profileComplete: !!account.profileComplete,
-    role: account.role,
-    mode: account.mode,
-    createdAt: account.createdAt,
-  };
+function modeFromSession(sessionUser: SupabaseUser): AppUser['mode'] {
+  if (sessionUser.is_anonymous) return 'guest';
+  const provider = sessionUser.app_metadata?.provider;
+  if (provider === 'apple') return 'apple';
+  if (provider === 'google') return 'google';
+  return 'email';
 }
 
-async function readAccounts(): Promise<StoredAccount[]> {
-  const rawUsers = await AsyncStorage.getItem(SAVED_USERS_KEY);
-  if (!rawUsers) return [];
-  try {
-    const users = JSON.parse(rawUsers);
-    return Array.isArray(users) ? users : [];
-  } catch {
-    return [];
-  }
+function fallbackName(mode: AppUser['mode'], email?: string) {
+  if (mode === 'guest') return '访客用户';
+  if (email) return email.split('@')[0] || '用户';
+  if (mode === 'apple') return 'Apple 用户';
+  if (mode === 'google') return 'Google 用户';
+  return '用户';
 }
 
-async function hashPassword(password: string, salt: string) {
-  return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, salt + ':' + password);
-}
-
-function makeSalt() {
-  return Date.now().toString(36) + '_' + Math.random().toString(36).slice(2);
+function translateAuthError(message: string) {
+  const lower = message.toLowerCase();
+  if (lower.includes('invalid login credentials')) return '邮箱或密码不正确。';
+  if (lower.includes('already registered') || lower.includes('already been registered')) return '这个邮箱已经注册，请直接登录。';
+  if (lower.includes('anonymous sign-ins are disabled')) return '访客登录暂未开启，请稍后再试或改用邮箱登录。';
+  if (lower.includes('email not confirmed')) return '请先到邮箱点开确认链接后再登录。';
+  if (lower.includes('password should be at least')) return '密码太短，至少需要 6 位。';
+  return message || '请稍后再试。';
 }
 
 async function bindRevenueCatUser(userId: string) {
@@ -113,108 +101,112 @@ async function bindRevenueCatUser(userId: string) {
   }
 }
 
+async function hydrateUser(sessionUser: SupabaseUser): Promise<AppUser> {
+  const email = sessionUser.email || undefined;
+  const mode = modeFromSession(sessionUser);
+  let profile = null;
+  try {
+    profile = await cloudGetProfile(sessionUser.id);
+  } catch {
+    // offline / first run — fall back to defaults, profile will hydrate on next launch
+  }
+  return {
+    id: sessionUser.id,
+    email,
+    displayName: profile?.display_name || fallbackName(mode, email),
+    avatarUri: profile?.avatar_uri || undefined,
+    profileComplete: !!profile?.profile_complete,
+    role: isAdminEmail(email) ? 'admin' : 'user',
+    mode,
+    createdAt: sessionUser.created_at || new Date().toISOString(),
+  };
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
   const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
 
-  useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const raw = await AsyncStorage.getItem(CURRENT_USER_KEY);
-        if (raw) {
-          const parsed: AppUser = JSON.parse(raw);
-          setUser(parsed);
-          await bindRevenueCatUser(parsed.id);
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadUser();
+  const applySession = useCallback(async (session: Session | null, shouldPull: boolean) => {
+    if (!session?.user) {
+      await AsyncStorage.removeItem(CURRENT_USER_KEY);
+      setUser(null);
+      setAdminUnlocked(false);
+      return;
+    }
+    const appUser = await hydrateUser(session.user);
+    // Write the current user BEFORE pulling: storage.ts derives the cloud user id from this key.
+    await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(appUser));
+    await bindRevenueCatUser(appUser.id);
+    if (shouldPull) await pullCloudIntoLocal().catch(() => false);
+    setUser(appUser);
+    setAdminUnlocked(false);
   }, []);
 
-  const persistUser = useCallback(async (nextUser: AppUser, account?: StoredAccount) => {
-    const users = await readAccounts();
-    const stored = account ?? nextUser;
-    const filtered = users.filter((item) => item.id !== nextUser.id);
-    await AsyncStorage.multiSet([
-      [CURRENT_USER_KEY, JSON.stringify(nextUser)],
-      [SAVED_USERS_KEY, JSON.stringify([stored, ...filtered])],
-    ]);
-    setUser(nextUser);
-    setAdminUnlocked(false);
-    await bindRevenueCatUser(nextUser.id);
-  }, []);
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!active) return;
+      await applySession(data.session, true);
+      setLoading(false);
+    })();
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      // INITIAL_SESSION is already handled by getSession above; token refreshes keep the same user.
+      if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') return;
+      applySession(session, event === 'SIGNED_IN');
+    });
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, [applySession]);
 
   const registerWithEmail = useCallback(async (emailInput: string, password: string, displayName?: string) => {
     const email = normalizeEmail(emailInput);
     if (!email.includes('@')) throw new Error('请输入有效邮箱。');
     if (password.length < 6) throw new Error('密码至少需要 6 位。');
-    const users = await readAccounts();
-    const existing = users.find((item) => item.mode === 'email' && normalizeEmail(item.email || '') === email);
-    if (existing?.passwordHash) throw new Error('这个邮箱已经注册，请直接登录。');
-    const salt = makeSalt();
-    const account: StoredAccount = {
-      id: existing?.id || makeStableId(email, 'email'),
-      email,
-      displayName: displayName?.trim() || email.split('@')[0] || '用户',
-      profileComplete: false,
-      role: isAdminEmail(email) ? 'admin' : 'user',
-      mode: 'email',
-      createdAt: existing?.createdAt || new Date().toISOString(),
-      passwordSalt: salt,
-      passwordHash: await hashPassword(password, salt),
-    };
-    await persistUser(publicUser(account), account);
-  }, [persistUser]);
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (error) throw new Error(translateAuthError(error.message));
+    if (!data.session?.user) {
+      // Email confirmation is ON in project settings — there is no session yet.
+      throw new Error('注册成功，请到邮箱点开确认链接后再登录。');
+    }
+    const name = displayName?.trim() || email.split('@')[0] || '用户';
+    await cloudUpsertProfile(data.session.user.id, { display_name: name, profile_complete: false }).catch(() => {});
+  }, []);
 
   const signInWithEmailPassword = useCallback(async (emailInput: string, password: string) => {
     const email = normalizeEmail(emailInput);
     if (!email.includes('@')) throw new Error('请输入有效邮箱。');
     if (!password) throw new Error('请输入密码。');
-    const users = await readAccounts();
-    const account = users.find((item) => item.mode === 'email' && normalizeEmail(item.email || '') === email);
-    if (!account) throw new Error('没有找到这个邮箱，请先注册。');
-    if (!account.passwordHash || !account.passwordSalt) throw new Error('这个本地账号还没有密码，请用注册入口设置密码。');
-    const passwordHash = await hashPassword(password, account.passwordSalt);
-    if (passwordHash !== account.passwordHash) throw new Error('密码不正确。');
-    const refreshed: StoredAccount = { ...account, role: isAdminEmail(account.email) ? 'admin' : 'user' };
-    await persistUser(publicUser(refreshed), refreshed);
-  }, [persistUser]);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw new Error(translateAuthError(error.message));
+  }, []);
 
   const signInWithSocial = useCallback(async (mode: 'apple' | 'google', payload: SocialSignInPayload) => {
-    const providerUserId = payload.providerUserId.trim();
-    if (!providerUserId) throw new Error('登录信息不完整，请重试。');
-    const id = makeStableId(mode + ':' + providerUserId, mode);
-    const users = await readAccounts();
-    const existing = users.find((item) => item.id === id);
-    const email = payload.email || existing?.email;
-    const displayName = normalizeName(payload.displayName) || existing?.displayName || (email ? email.split('@')[0] : mode === 'apple' ? 'Apple 用户' : 'Google 用户');
-    const account: StoredAccount = {
-      id,
-      email: email || undefined,
-      displayName,
-      avatarUri: existing?.avatarUri,
-      profileComplete: !!existing?.profileComplete,
-      role: isAdminEmail(email) ? 'admin' : 'user',
-      mode,
-      createdAt: existing?.createdAt || new Date().toISOString(),
-    };
-    await persistUser(publicUser(account), account);
-  }, [persistUser]);
+    if (!payload.idToken) throw new Error('登录信息不完整，请重试。');
+    const { data, error } = await supabase.auth.signInWithIdToken({
+      provider: mode,
+      token: payload.idToken,
+      ...(payload.rawNonce ? { nonce: payload.rawNonce } : {}),
+    });
+    if (error) throw new Error(translateAuthError(error.message));
+    // Apple/Google only return the user's name on the FIRST authorization. Capture it once.
+    const name = normalizeName(payload.displayName);
+    if (data.session?.user && name) {
+      const existing = await cloudGetProfile(data.session.user.id).catch(() => null);
+      if (!existing?.display_name) await cloudUpsertProfile(data.session.user.id, { display_name: name }).catch(() => {});
+    }
+  }, []);
 
   const signInWithApple = useCallback((payload: SocialSignInPayload) => signInWithSocial('apple', payload), [signInWithSocial]);
   const signInWithGoogle = useCallback((payload: SocialSignInPayload) => signInWithSocial('google', payload), [signInWithSocial]);
 
   const continueAsGuest = useCallback(async () => {
-    let guestId = await AsyncStorage.getItem(GUEST_ID_KEY);
-    if (!guestId) {
-      guestId = 'guest_' + Date.now().toString(36);
-      await AsyncStorage.setItem(GUEST_ID_KEY, guestId);
-    }
-    await persistUser({ id: guestId, displayName: '访客用户', profileComplete: false, role: 'user', mode: 'guest', createdAt: new Date().toISOString() });
-  }, [persistUser]);
+    const { error } = await supabase.auth.signInAnonymously();
+    if (error) throw new Error(translateAuthError(error.message));
+  }, []);
 
   const unlockAdmin = useCallback(async (pin: string) => {
     const allowed = user?.role === 'admin' && pin.trim() === ADMIN_LOCAL_PIN;
@@ -225,9 +217,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const lockAdmin = useCallback(() => setAdminUnlocked(false), []);
 
   const signOut = useCallback(async () => {
-    await AsyncStorage.removeItem(CURRENT_USER_KEY);
-    setUser(null);
-    setAdminUnlocked(false);
+    await supabase.auth.signOut();
     if (Platform.OS === 'ios') {
       try {
         await configureRevenueCat();
@@ -239,14 +229,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   const deleteAccount = useCallback(async () => {
-    if (user) {
-      const users = await readAccounts();
-      await AsyncStorage.setItem(SAVED_USERS_KEY, JSON.stringify(users.filter((item) => item.id !== user.id)));
-    }
+    if (user?.id) await cloudDeleteAll(user.id).catch(() => {});
     await resetAllData();
-    await AsyncStorage.removeItem(CURRENT_USER_KEY);
-    setUser(null);
-    setAdminUnlocked(false);
+    await supabase.auth.signOut();
     if (Platform.OS === 'ios') {
       try {
         await configureRevenueCat();
@@ -255,7 +240,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         console.log('[Auth] RevenueCat logOut after delete skipped:', error);
       }
     }
-  }, [user]);
+  }, [user?.id]);
 
   const updateProfile = useCallback(async (updates: { displayName?: string; avatarUri?: string; profileComplete?: boolean }) => {
     if (!user) return;
@@ -265,15 +250,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
       avatarUri: updates.avatarUri ?? user.avatarUri,
       profileComplete: updates.profileComplete ?? user.profileComplete,
     };
-    const users = await readAccounts();
-    const existing = users.find((item) => item.id === user.id);
-    const nextAccount: StoredAccount = { ...(existing ?? nextUser), ...nextUser };
-    const filtered = users.filter((item) => item.id !== user.id);
-    await AsyncStorage.multiSet([
-      [CURRENT_USER_KEY, JSON.stringify(nextUser)],
-      [SAVED_USERS_KEY, JSON.stringify([nextAccount, ...filtered])],
-    ]);
+    await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(nextUser));
     setUser(nextUser);
+    await cloudUpsertProfile(user.id, {
+      display_name: nextUser.displayName,
+      avatar_uri: nextUser.avatarUri ?? null,
+      profile_complete: !!nextUser.profileComplete,
+    }).catch(() => {});
   }, [user]);
 
   const value = useMemo<AuthContextValue>(() => ({

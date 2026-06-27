@@ -2,6 +2,7 @@ import { useAuth } from '@/auth';
 import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Google from 'expo-auth-session/providers/google';
+import * as Crypto from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -23,6 +24,8 @@ export default function LoginScreen() {
   const [googleRequest, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
     iosClientId: GOOGLE_IOS_CLIENT_ID || googlePlaceholderClientId,
     webClientId: GOOGLE_WEB_CLIENT_ID || googlePlaceholderClientId,
+    // Request an OpenID id_token (not just an access token) — Supabase verifies the id_token.
+    scopes: ['openid', 'profile', 'email'],
   });
 
   const loading = loadingAction !== '';
@@ -30,22 +33,32 @@ export default function LoginScreen() {
   useEffect(() => {
     const finishGoogleLogin = async () => {
       if (googleResponse?.type !== 'success') return;
+      const idToken = googleResponse.authentication?.idToken || (googleResponse.params as any)?.id_token;
       const accessToken = googleResponse.authentication?.accessToken;
-      if (!accessToken) {
-        Alert.alert('Google 登录失败', '没有收到 Google 登录凭证，请稍后重试。');
+      if (!idToken) {
+        Alert.alert('Google 登录失败', '没有拿到 Google 身份令牌，请改用 Apple 或邮箱登录。');
         return;
       }
       try {
         setLoadingAction('google');
-        const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: 'Bearer ' + accessToken },
-        });
-        if (!profileResponse.ok) throw new Error('profile failed');
-        const profile = await profileResponse.json();
-        await signInWithGoogle({ providerUserId: String(profile.sub || profile.email || ''), email: profile.email, displayName: profile.name });
-        Alert.alert('登录成功', 'Google 账号已登录。不同账号会使用各自的数据。');
-      } catch {
-        Alert.alert('Google 登录失败', '暂时无法读取 Google 账号信息，请稍后重试。');
+        let email: string | undefined;
+        let name: string | undefined;
+        if (accessToken) {
+          try {
+            const profileResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + accessToken } });
+            if (profileResponse.ok) {
+              const profile = await profileResponse.json();
+              email = profile.email;
+              name = profile.name;
+            }
+          } catch {
+            // optional enrichment only — the id_token already identifies the user to Supabase
+          }
+        }
+        await signInWithGoogle({ idToken, email, displayName: name });
+        Alert.alert('登录成功', 'Google 账号已登录。');
+      } catch (error: any) {
+        Alert.alert('Google 登录失败', error?.message || '暂时无法登录，请稍后重试。');
       } finally {
         setLoadingAction('');
       }
@@ -92,11 +105,20 @@ export default function LoginScreen() {
         return;
       }
       setLoadingAction('apple');
+      // Supabase validates Apple's id_token against a nonce: we send Apple the SHA-256 hash and
+      // Supabase the raw value (replay protection).
+      const rawNonce = Array.from(await Crypto.getRandomBytesAsync(16)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
       const credential = await AppleAuthentication.signInAsync({
         requestedScopes: [AppleAuthentication.AppleAuthenticationScope.FULL_NAME, AppleAuthentication.AppleAuthenticationScope.EMAIL],
+        nonce: hashedNonce,
       });
+      if (!credential.identityToken) {
+        Alert.alert('Apple 登录失败', '没有收到 Apple 身份令牌，请稍后重试。');
+        return;
+      }
       const nameParts = [credential.fullName?.givenName, credential.fullName?.familyName].filter(Boolean);
-      await signInWithApple({ providerUserId: credential.user, email: credential.email, displayName: nameParts.join(' ') });
+      await signInWithApple({ idToken: credential.identityToken, rawNonce, email: credential.email, displayName: nameParts.join(' ') });
       Alert.alert('登录成功', 'Apple 账号已登录。');
     } catch (error: any) {
       if (error?.code !== 'ERR_REQUEST_CANCELED') Alert.alert('Apple 登录失败', '请稍后再试。');
@@ -155,14 +177,14 @@ export default function LoginScreen() {
             <TouchableOpacity style={styles.providerButton} onPress={handleGoogleLogin} disabled={loading}>
               {loadingAction === 'google' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}>使用 Google 登录</Text>}
             </TouchableOpacity>
-          )}
+          )}
         </View>
 
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>账号说明</Text>
-          <Text style={styles.infoText}>· 邮箱密码账号目前保存在本机。</Text>
-          <Text style={styles.infoText}>· Apple / Google 登录会绑定会员状态。</Text>
-          <Text style={styles.infoText}>· 后续接正式后端后，可支持跨手机同步。</Text>
+          <Text style={styles.infoText}>· 登录后，你的记录会安全同步到云端。</Text>
+          <Text style={styles.infoText}>· 换手机或重装后，用同一个登录方式即可找回数据。</Text>
+          <Text style={styles.infoText}>· 访客模式只保存在本机，重装会清空。</Text>
         </View>
 
         <View style={styles.warningCard}>
