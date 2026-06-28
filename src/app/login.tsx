@@ -246,7 +246,7 @@ export default function LoginScreen() {
           <Text style={styles.infoTitle}>账号说明</Text>
           <Text style={styles.infoText}>· 登录后，你的记录会安全同步到云端。</Text>
           <Text style={styles.infoText}>· 换手机或重装后，用同一个登录方式即可找回数据。</Text>
-          <Text style={styles.infoText}>· 访客模式只保存在本机，重装会清空。</Text>
+          <Text style={styles.infoText}>· 支持邮箱、Apple、Google 登录。</Text>
         </View>
 
         <View style={styles.warningCard}>
@@ -290,8 +290,6 @@ const styles = StyleSheet.create({
   dividerText: { color: '#aaa', fontSize: 12, marginHorizontal: 10 },
   providerButton: { borderWidth: 1.5, borderColor: '#DADCE0', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 10, backgroundColor: '#fff' },
   providerText: { color: '#222', fontSize: 15, fontWeight: 'bold' },
-  secondaryButton: { borderWidth: 1.5, borderColor: '#2E7D32', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 2 },
-  secondaryText: { color: '#2E7D32', fontSize: 15, fontWeight: 'bold' },
   infoCard: { backgroundColor: '#fff', borderRadius: 16, padding: 18, marginTop: 18 },
   infoTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 8 },
   infoText: { fontSize: 13, color: '#666', lineHeight: 22 },

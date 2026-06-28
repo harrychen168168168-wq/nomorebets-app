@@ -33,7 +33,6 @@ type AuthContextValue = {
   confirmPasswordReset: (email: string, code: string, newPassword: string) => Promise<void>;
   unlockAdmin: (pin: string) => Promise<boolean>;
   lockAdmin: () => void;
-  continueAsGuest: () => Promise<void>;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   updateProfile: (updates: { displayName?: string; avatarUri?: string; profileComplete?: boolean }) => Promise<void>;
@@ -226,11 +225,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (updateError) throw new Error(translateAuthError(updateError.message));
   }, []);
 
-  const continueAsGuest = useCallback(async () => {
-    const { error } = await supabase.auth.signInAnonymously();
-    if (error) throw new Error(translateAuthError(error.message));
-  }, []);
-
   const unlockAdmin = useCallback(async (pin: string) => {
     const allowed = user?.role === 'admin' && pin.trim() === ADMIN_LOCAL_PIN;
     setAdminUnlocked(allowed);
@@ -302,11 +296,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     confirmPasswordReset,
     unlockAdmin,
     lockAdmin,
-    continueAsGuest,
     signOut,
     deleteAccount,
     updateProfile,
-  }), [adminUnlocked, confirmPasswordReset, continueAsGuest, deleteAccount, loading, lockAdmin, registerWithEmail, requestPasswordReset, signInWithApple, signInWithEmailPassword, signInWithGoogle, signOut, unlockAdmin, updateProfile, user]);
+  }), [adminUnlocked, confirmPasswordReset, deleteAccount, loading, lockAdmin, registerWithEmail, requestPasswordReset, signInWithApple, signInWithEmailPassword, signInWithGoogle, signOut, unlockAdmin, updateProfile, user]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
