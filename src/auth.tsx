@@ -146,14 +146,23 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, []);
 
   useEffect(() => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
     let active = true;
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!active) return;
-      await applySession(data.session, true);
-      setLoading(false);
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!active) return;
+        await applySession(data.session, true);
+      } catch (error) {
+        console.warn('[auth] init failed:', error);
+      } finally {
+        if (active) setLoading(false);
+      }
     })();
-    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event: string, session: Session | null) => {
       // INITIAL_SESSION is already handled by getSession above; token refreshes keep the same user.
       if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') return;
       applySession(session, event === 'SIGNED_IN');

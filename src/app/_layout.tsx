@@ -2,6 +2,7 @@ import LoginScreen from '@/app/login';
 import FirstProfileSetup from '@/components/FirstProfileSetup';
 import PaywallModal from '@/components/PaywallModal';
 import { AuthProvider, useAuth } from '@/auth';
+import { supabaseInitError } from '@/supabase';
 import { configureRevenueCat } from '@/subscription';
 import { syncReminders } from '@/notifications';
 import { loadData, saveData } from '@/storage';
@@ -72,6 +73,15 @@ function AppShell() {
     });
     return () => sub.remove();
   }, [user?.id]);
+
+  if (supabaseInitError) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF8E7', padding: 24 }}>
+        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#7A4C00', marginBottom: 12 }}>启动错误（请截图发我）</Text>
+        <Text selectable style={{ fontSize: 13, color: '#5D4037', lineHeight: 20 }}>{supabaseInitError}</Text>
+      </View>
+    );
+  }
 
   if (loading) {
     return (
