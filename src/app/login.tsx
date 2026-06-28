@@ -1,6 +1,5 @@
 import { useAuth } from '@/auth';
 import { GOOGLE_IOS_CLIENT_ID, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
-import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import { useEffect, useMemo, useState } from 'react';
@@ -25,8 +24,15 @@ export default function LoginScreen() {
   const loading = loadingAction !== '';
 
   // Native Google Sign-In returns a backend-verifiable id_token directly (no browser redirect).
+  // Lazy-require (not a top-level import) so a native-module issue can never crash app startup.
   useEffect(() => {
-    if (Platform.OS !== 'web' && GOOGLE_IOS_CLIENT_ID) GoogleSignin.configure({ iosClientId: GOOGLE_IOS_CLIENT_ID });
+    if (Platform.OS === 'web' || !GOOGLE_IOS_CLIENT_ID) return;
+    try {
+      const { GoogleSignin } = require('@react-native-google-signin/google-signin');
+      GoogleSignin.configure({ iosClientId: GOOGLE_IOS_CLIENT_ID });
+    } catch (error) {
+      console.warn('[google] configure failed:', error);
+    }
   }, []);
 
   const primaryLabel = useMemo(() => authMode === 'login' ? '邮箱登录' : '注册邮箱账号', [authMode]);
@@ -151,6 +157,14 @@ export default function LoginScreen() {
       Alert.alert('Google 登录未配置', '请先在 src/config.ts 填入 Google iOS Client ID。');
       return;
     }
+    let GoogleSignin: any;
+    let statusCodes: any;
+    try {
+      ({ GoogleSignin, statusCodes } = require('@react-native-google-signin/google-signin'));
+    } catch {
+      Alert.alert('Google 登录暂不可用', '请改用 Apple 或邮箱登录。');
+      return;
+    }
     try {
       setLoadingAction('google');
       await GoogleSignin.hasPlayServices();
@@ -165,7 +179,7 @@ export default function LoginScreen() {
       await signInWithGoogle({ idToken, email: profile?.email, displayName: profile?.name });
       Alert.alert('登录成功', 'Google 账号已登录。');
     } catch (error: any) {
-      if (error?.code !== statusCodes.SIGN_IN_CANCELLED) Alert.alert('Google 登录失败', error?.message || '请稍后再试。');
+      if (error?.code !== statusCodes?.SIGN_IN_CANCELLED) Alert.alert('Google 登录失败', error?.message || '请稍后再试。');
     } finally {
       setLoadingAction('');
     }

@@ -8,17 +8,35 @@ import { loadData, saveData } from '@/storage';
 import * as Notifications from 'expo-notifications';
 import { Tabs } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Text, View } from 'react-native';
+
+// TEMP (build 24 startup-crash diagnosis): surface an uncaught JS error as an alert instead of a
+// silent native abort, so we can read what actually failed. Remove once startup is confirmed stable.
+const _global: any = globalThis as any;
+if (_global?.ErrorUtils?.setGlobalHandler && !_global.__nmbErrorHandlerSet) {
+  _global.__nmbErrorHandlerSet = true;
+  _global.ErrorUtils.setGlobalHandler((error: any) => {
+    try {
+      Alert.alert('启动出错（请截图发我）', String((error && (error.message || error)) || 'unknown').slice(0, 500));
+    } catch {
+      // alert itself failed — nothing more we can do
+    }
+  });
+}
 
 // Foreground presentation for our local high-risk-time reminders (banner + sound, no badge).
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+} catch (error) {
+  console.warn('[notifications] setNotificationHandler failed:', error);
+}
 
 function AppShell() {
   const { user, loading } = useAuth();
