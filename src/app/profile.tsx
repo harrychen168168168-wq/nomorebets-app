@@ -286,6 +286,7 @@ export default function ProfilePage() {
           </View>
           {subscription?.error && !isPro ? <Text style={styles.subscriptionWarn}>{subscription.error}</Text> : null}
           <View style={styles.subscriptionActions}>
+            {!isPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => { setPaywallFeature(undefined); setShowPaywall(true); }}><Text style={styles.subscriptionPrimaryText}>查看会员方案</Text></TouchableOpacity>}
             {isMonthlyPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => { setPaywallFeature(undefined); setShowPaywall(true); }}><Text style={styles.subscriptionPrimaryText}>升级家庭守护版</Text></TouchableOpacity>}
             <TouchableOpacity style={styles.subscriptionSecondary} onPress={handleRestorePurchase} disabled={restoreLoading}>{restoreLoading ? <ActivityIndicator color="#2E7D32" /> : <Text style={styles.subscriptionSecondaryText}>恢复购买</Text>}</TouchableOpacity>
             <TouchableOpacity style={styles.subscriptionSecondary} onPress={openSubscriptionManagement}><Text style={styles.subscriptionSecondaryText}>管理订阅</Text></TouchableOpacity>
