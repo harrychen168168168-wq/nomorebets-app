@@ -2,7 +2,7 @@
 
 ## RevenueCat / App Store Connect
 - App Store Connect 中自动续订订阅产品已处于可测试状态。
-- 3天免费试用已在 App Store Connect 对应产品中配置。
+- 7天免费试用已在 App Store Connect 对应产品中配置（必须与 App 内“7天免费体验”文案一致；如 ASC 实际是别的天数，先改 ASC 或改文案）。
 - RevenueCat entitlement 建议使用 `NO MORE BETS Pro`；如果后台实际使用 `pro` 或 `premium`，Build 3 也做了兼容。
 - RevenueCat Offering 必须包含 monthly / annual 或对应月付/年付产品。
 
@@ -11,7 +11,7 @@
 2. 打开 App，使用邮箱登录或访客模式进入。
 3. 到“我的”页面查看订阅状态卡。
 4. 点击“查看订阅”，确认 Paywall 能显示月付/年付方案和价格。
-5. 点击开始3天免费试用，确认 Apple 系统购买窗口弹出。
+5. 点击开始7天免费试用，确认 Apple 系统购买窗口弹出。
 6. 完成 Sandbox 购买后，确认“高级会员已激活”。
 7. 退出 App 重开，确认高级会员状态仍然存在。
 8. 删除 App 重装或换账号后，点击“恢复购买”，确认可以恢复。

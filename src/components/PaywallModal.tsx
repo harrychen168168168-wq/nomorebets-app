@@ -1,4 +1,4 @@
-import { PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
+import { ANNUAL_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
 import { configureRevenueCat, customerInfoToSnapshot, getFriendlyPurchaseError } from '@/subscription';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -11,19 +11,42 @@ type Props = {
   featureName?: string;
   defaultPlan?: PlanType;
   onboardingPrompt?: boolean;
+  monthlyLoss?: number; // 漏斗注入：付费墙文案锚定用户填的月损失（B2 起使用）
 };
 
-type PlanType = 'ANNUAL' | 'MONTHLY' | 'MUTUAL';
+type PlanType = 'ANNUAL' | 'MONTHLY' | 'MUTUAL' | 'LIFETIME';
 
+const MUTUAL_KEYWORDS = ['mutual', 'couple', 'partner', 'duo', 'pair'];
+
+function isMutualProduct(productId: string) {
+  const id = productId.toLowerCase();
+  return MUTUAL_PRODUCT_IDS.some((x) => x.toLowerCase() === id) || MUTUAL_KEYWORDS.some((keyword) => id.includes(keyword));
+}
+
+function isLifetimeProduct(productId: string) {
+  const id = productId.toLowerCase();
+  return LIFETIME_PRODUCT_IDS.some((x) => x.toLowerCase() === id) || id.includes('lifetime') || id.includes('forever');
+}
+
+// Exact product ids from config win first; packageType/keyword matching is only a fallback.
+// The family (ANNUAL) card must never fall onto the mutual or lifetime product — their ids can also
+// contain "year", which is exactly how cards could get mixed up.
 function pickPackage(packages: PurchasesPackage[], type: PlanType): PurchasesPackage | undefined {
-  if (type === 'MUTUAL') {
-    const keywords = ['mutual', 'couple', 'partner', 'duo', 'pair'];
-    return packages.find((p) => keywords.some((keyword) => p.product.identifier.toLowerCase().includes(keyword)));
-  }
-  const byType = packages.find((p) => p.packageType === type);
+  const exactSource =
+    type === 'MUTUAL' ? MUTUAL_PRODUCT_IDS :
+    type === 'ANNUAL' ? ANNUAL_PRODUCT_IDS :
+    type === 'LIFETIME' ? LIFETIME_PRODUCT_IDS :
+    MONTHLY_PRODUCT_IDS;
+  const exactIds = exactSource.map((x) => x.toLowerCase());
+  const exact = packages.find((p) => exactIds.includes(p.product.identifier.toLowerCase()));
+  if (exact) return exact;
+  if (type === 'LIFETIME') return packages.find((p) => isLifetimeProduct(p.product.identifier));
+  if (type === 'MUTUAL') return packages.find((p) => isMutualProduct(p.product.identifier));
+  const candidates = packages.filter((p) => !isMutualProduct(p.product.identifier) && !isLifetimeProduct(p.product.identifier));
+  const byType = candidates.find((p) => p.packageType === type);
   if (byType) return byType;
   const keywords = type === 'ANNUAL' ? ['yearly', 'annual', 'year'] : ['monthly', 'month'];
-  return packages.find((p) => keywords.some((keyword) => p.product.identifier.toLowerCase().includes(keyword)));
+  return candidates.find((p) => keywords.some((keyword) => p.product.identifier.toLowerCase().includes(keyword)));
 }
 
 function getPlanSubtitle(pkg: PurchasesPackage, fallback: string) {
@@ -32,14 +55,12 @@ function getPlanSubtitle(pkg: PurchasesPackage, fallback: string) {
   return fallback;
 }
 
-export default function PaywallModal({ visible, onClose, onSuccess, featureName, defaultPlan = 'ANNUAL', onboardingPrompt = false }: Props) {
+export default function PaywallModal({ visible, onClose, onSuccess, featureName, defaultPlan = 'LIFETIME', onboardingPrompt = false, monthlyLoss = 0 }: Props) {
   const [packages, setPackages] = useState<PurchasesPackage[]>([]);
-  const [selected, setSelected] = useState<PlanType>('ANNUAL');
+  const [selected, setSelected] = useState<PlanType>('LIFETIME');
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  const isAiFeature = featureName?.includes('AI');
 
   useEffect(() => {
     if (visible) loadOfferings();
@@ -59,6 +80,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
       const pkgs = offerings.current?.availablePackages ?? [];
       setPackages(pkgs);
       if (pickPackage(pkgs, defaultPlan)) setSelected(defaultPlan);
+      else if (pickPackage(pkgs, 'LIFETIME')) setSelected('LIFETIME');
       else if (pickPackage(pkgs, 'ANNUAL')) setSelected('ANNUAL');
       else if (pickPackage(pkgs, 'MUTUAL')) setSelected('MUTUAL');
       else if (pickPackage(pkgs, 'MONTHLY')) setSelected('MONTHLY');
@@ -74,8 +96,21 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
   const annual = useMemo(() => pickPackage(packages, 'ANNUAL'), [packages]);
   const monthly = useMemo(() => pickPackage(packages, 'MONTHLY'), [packages]);
   const mutual = useMemo(() => pickPackage(packages, 'MUTUAL'), [packages]);
-  const selectedPackage = selected === 'MUTUAL' ? mutual : selected === 'ANNUAL' ? annual : monthly;
-  const hasPlans = !!annual || !!monthly || !!mutual;
+  const lifetime = useMemo(() => pickPackage(packages, 'LIFETIME'), [packages]);
+  const selectedPackage = selected === 'MUTUAL' ? mutual : selected === 'LIFETIME' ? lifetime : selected === 'ANNUAL' ? annual : monthly;
+  const hasPlans = !!annual || !!monthly || !!mutual || !!lifetime;
+  // Real anchor: 12× the monthly price struck through next to the annual price ("save X%").
+  const annualSavingsPct = annual && monthly && monthly.product.price > 0
+    ? Math.max(0, Math.round((1 - annual.product.price / (monthly.product.price * 12)) * 100))
+    : 0;
+  // Personalized: how many days of the user's own gambling loss the annual price equals.
+  const annualLossDays = annual && monthlyLoss > 0
+    ? Math.max(1, Math.round(annual.product.price / (monthlyLoss / 30)))
+    : 0;
+  // Lifetime vs annual: how many years of subscription the one-time buyout price equals.
+  const lifetimeYears = lifetime && annual && annual.product.price > 0
+    ? Math.round((lifetime.product.price / annual.product.price) * 10) / 10
+    : 0;
 
   function finishWithSnapshot(customerInfo: any) {
     const snapshot = customerInfoToSnapshot(customerInfo);
@@ -83,11 +118,14 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
       Alert.alert('正在确认订阅', '购买流程已完成，但会员状态还没同步。请稍后点“恢复购买”。');
       return;
     }
-    if (isAiFeature && snapshot.planType !== 'monthly' && snapshot.planType !== 'annual' && snapshot.planType !== 'mutual') {
-      Alert.alert('AI 暂未解锁', 'AI 冲动倾诉包含在个人自救版、家庭守护版和互相守护版中。');
-      return;
-    }
-    Alert.alert('订阅已生效', snapshot.planType === 'mutual' ? '互相守护版已解锁。' : snapshot.planType === 'annual' ? '家庭守护版已解锁全部功能。' : '个人自救版已解锁基础功能。');
+    Alert.alert(
+      '已解锁',
+      snapshot.planType === 'mutual' ? '互相守护版已解锁。'
+        : snapshot.planType === 'annual' ? '家庭守护版已解锁全部功能。'
+        : snapshot.planType === 'lifetime' ? '终身会员已解锁全部功能。'
+        : snapshot.planType === 'monthly' ? '个人自救版已解锁。'
+        : '会员已解锁。'
+    );
     onSuccess();
   }
 
@@ -128,22 +166,26 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
           </TouchableOpacity>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
             <View style={styles.heroIcon}><Text style={styles.heroEmoji}>🌱</Text></View>
-            <Text style={styles.title}>NoMoreBets 自救计划</Text>
+            <Text style={styles.title}>{onboardingPrompt ? '开启你的 90 天新生计划' : 'NoMoreBets 自救计划'}</Text>
             <Text style={styles.subtitle}>
-              {featureName ? '“' + featureName + '”需要有效订阅。' : '选择你的订阅方案。'}三种方案都解锁全部功能，区别只在 AI 次数和守护邀请。
+              {featureName
+                ? '“' + featureName + '”需要有效订阅。'
+                : onboardingPrompt && monthlyLoss > 0
+                  ? '你每月大约输 $' + monthlyLoss.toLocaleString() + '。给自己一个能真正守住它的计划——头 7 天免费。'
+                  : '选择你的方案，头 7 天免费。'}
             </Text>
 
             {onboardingPrompt ? (
               <View style={styles.recommendCard}>
-                <Text style={styles.recommendTitle}>先开启 7 天免费体验</Text>
-                <Text style={styles.recommendLine}>一个人先开始，建议试用家庭守护版：先把提醒、联系人、目标和冲动应对流程准备好。</Text>
-                {mutual ? <Text style={styles.recommendLine}>如果是两个人一起努力，建议试用互相守护版：彼此看见进度，也给对方一个按下暂停的理由。</Text> : null}
-                <Text style={styles.recommendWarn}>重要：邀请码有效期跟主会员剩余时间一致。主会员剩多久，被邀请人就能用多久；正式购买互相守护版时也一样。</Text>
+                <Text style={styles.recommendTitle}>最省心：一次买断，永久拥有</Text>
+                <Text style={styles.recommendLine}>戒赌是长期的事。一次付清就永久解锁全部功能，不用每年续费、也不怕忘记取消。</Text>
+                <Text style={styles.recommendLine}>还没准备好一次付清？也可以选家庭守护版，先免费体验 7 天。</Text>
               </View>
             ) : null}
 
             <View style={styles.featuresCard}>
               <Text style={styles.sectionTitle}>计划区别（都解锁全部功能）</Text>
+              <Text style={styles.featureLine}>终身会员：一次付清，永久解锁全部功能，不再续费（无免费试用）。</Text>
               <Text style={styles.featureLine}>个人自救版：解锁全部自救功能，含 AI 每月 50 次，适合一个人开始。</Text>
               <Text style={styles.featureLine}>家庭守护版：全部功能 + 可邀请一位家人守护；AI 每月 100 次为家庭共享额度。</Text>
               {mutual ? <Text style={styles.featureLine}>互相守护版：全部功能 + 一对一互相守护；双方各自 AI 每月 100 次。</Text> : null}
@@ -158,14 +200,41 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
               </View>
             ) : hasPlans ? (
               <View style={styles.plans}>
+                {lifetime && (
+                  <TouchableOpacity style={[styles.lifetimeCard, selected === 'LIFETIME' && styles.lifetimeCardSelected]} onPress={() => setSelected('LIFETIME')} disabled={purchasing}>
+                    <View style={styles.planTopRow}>
+                      <Text style={styles.lifetimeName}>终身会员 · 一次买断</Text>
+                      <View style={styles.badgeGold}><Text style={styles.badgeText}>🔥 最超值</Text></View>
+                    </View>
+                    <View style={styles.priceRow}>
+                      <Text style={styles.lifetimePrice}>{lifetime.product.priceString}</Text>
+                      <Text style={styles.lifetimeOnce}>一次付清 · 永久拥有</Text>
+                    </View>
+                    {lifetimeYears > 0 ? (
+                      <Text style={styles.lifetimeCompare}>≈ {lifetimeYears} 年的订阅费，之后永远免费。订满两年，买断更划算。</Text>
+                    ) : null}
+                    <View style={styles.lifetimeBenefits}>
+                      <Text style={styles.lifetimeBenefitStrong}>戒赌是一辈子的事——一次搞定，再不用每年续费、记着取消。</Text>
+                      <Text style={styles.lifetimeBenefit}>永久解锁全部功能：90 天计划、AI 冲动倾诉、周月报告、守护邀请、无限联系人和目标。</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                {lifetime && (annual || monthly || mutual) ? (
+                  <View style={styles.divider}><View style={styles.dividerLine} /><Text style={styles.dividerText}>或按期订阅</Text><View style={styles.dividerLine} /></View>
+                ) : null}
                 {annual && (
                   <TouchableOpacity style={[styles.planCard, selected === 'ANNUAL' && styles.planSelected]} onPress={() => setSelected('ANNUAL')} disabled={purchasing}>
                     <View style={styles.planTopRow}>
                       <Text style={styles.planName}>家庭守护版</Text>
-                      <View style={styles.badge}><Text style={styles.badgeText}>推荐</Text></View>
+                      <View style={styles.badge}><Text style={styles.badgeText}>含 7 天免费</Text></View>
                     </View>
-                    <Text style={styles.planPrice}>{annual.product.priceString} / 年</Text>
-                    <Text style={styles.planSub}>{getPlanSubtitle(annual, '7天免费自救体验后按年自动续订')}</Text>
+                    <View style={styles.priceRow}>
+                      <Text style={styles.planPrice}>{annual.product.priceString} / 年</Text>
+                      {monthly && annualSavingsPct > 0 ? (
+                        <Text style={styles.anchor}>原价 <Text style={styles.strike}>{monthly.product.priceString}×12</Text> · 省 {annualSavingsPct}%</Text>
+                      ) : null}
+                    </View>
+                    <Text style={styles.planSub}>{getPlanSubtitle(annual, '7 天免费体验，之后按年自动续订')}{annualLossDays > 0 ? ' · 约等于你 ' + annualLossDays + ' 天的赌博损失' : ''}</Text>
                     <View style={styles.planBenefits}>
                       <Text style={styles.planBenefitStrong}>一顿饭钱，给身边重要的人一整年的陪伴和守护。</Text>
                       <Text style={styles.planBenefit}>适合由家人发起守护。把日常记录、紧急联系人、目标提醒和冲动应对放在一起，关键时刻多一个拉住他的入口。</Text>
@@ -197,8 +266,9 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                       <Text style={styles.planBenefit}>适合朋友、伴侣、兄弟姐妹，或任何想一起戒赌的两个人。不是互相责备，而是一起把生活过得更好。</Text>
                     </View>
                   </TouchableOpacity>
-                )}                <TouchableOpacity style={[styles.primaryBtn, (!selectedPackage || purchasing) && styles.disabledBtn]} onPress={() => handlePurchase(selectedPackage)} disabled={!selectedPackage || purchasing}>
-                  {purchasing ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{selected === 'ANNUAL' ? '开始7天家庭守护体验' : selected === 'MUTUAL' ? '开始7天互相守护体验' : '开始7天个人自救体验'}</Text>}
+                )}
+                <TouchableOpacity style={[styles.primaryBtn, (!selectedPackage || purchasing) && styles.disabledBtn]} onPress={() => handlePurchase(selectedPackage)} disabled={!selectedPackage || purchasing}>
+                  {purchasing ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{selected === 'LIFETIME' ? '一次买断 · 永久解锁' + (lifetime ? ' ' + lifetime.product.priceString : '') : selected === 'ANNUAL' ? '开始 7 天家庭守护体验' : selected === 'MUTUAL' ? '开始 7 天互相守护体验' : '开始 7 天个人自救体验'}</Text>}
                 </TouchableOpacity>
               </View>
             ) : (
@@ -259,7 +329,23 @@ const styles = StyleSheet.create({
   planTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   planName: { fontSize: 15, fontWeight: 'bold', color: '#333' },
   badge: { backgroundColor: '#2E7D32', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
+  badgeGold: { backgroundColor: '#E67E22', borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  priceRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 },
+  anchor: { fontSize: 12, color: '#E67E22', fontWeight: 'bold' },
+  strike: { textDecorationLine: 'line-through', color: '#aaa', fontWeight: 'normal' },
+  lifetimeCard: { borderWidth: 2, borderColor: '#E67E22', borderRadius: 16, padding: 16, backgroundColor: '#FFF8F0' },
+  lifetimeCardSelected: { backgroundColor: '#FFF1E3', shadowColor: '#E67E22', shadowOpacity: 0.22, shadowRadius: 8, elevation: 3 },
+  lifetimeName: { fontSize: 16, fontWeight: 'bold', color: '#B85C00' },
+  lifetimePrice: { fontSize: 26, fontWeight: 'bold', color: '#E67E22' },
+  lifetimeOnce: { fontSize: 13, color: '#B85C00', fontWeight: 'bold' },
+  lifetimeCompare: { fontSize: 12, color: '#9A6A00', marginTop: 4, fontWeight: 'bold' },
+  lifetimeBenefits: { backgroundColor: 'rgba(230,126,34,0.08)', borderRadius: 10, padding: 10, marginTop: 10 },
+  lifetimeBenefitStrong: { fontSize: 13, color: '#B85C00', fontWeight: 'bold', marginBottom: 4, lineHeight: 18 },
+  lifetimeBenefit: { fontSize: 12, color: '#6F5A28', lineHeight: 18 },
+  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: '#eee' },
+  dividerText: { fontSize: 12, color: '#aaa', marginHorizontal: 10 },
   planPrice: { fontSize: 22, fontWeight: 'bold', color: '#2E7D32', marginBottom: 2 },
   planSub: { fontSize: 12, color: '#777', lineHeight: 17 },
   planBenefits: { backgroundColor: '#F8FAF7', borderRadius: 10, padding: 10, marginTop: 10 },

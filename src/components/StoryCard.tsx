@@ -26,6 +26,10 @@ export default function StoryCard({ story, userId, compact = false }: Props) {
   const isAi = story.source === 'ai' || story.displayMode === 'ai';
 
   async function sendReaction(label: string) {
+    if (isAi) {
+      Alert.alert('已送出鼓励', '这条鼓励会帮助故事作者知道自己被看见。');
+      return;
+    }
     try {
       setBusy(true);
       await reactToStory(story.id, userId, label);
@@ -48,6 +52,10 @@ export default function StoryCard({ story, userId, compact = false }: Props) {
   }
 
   async function submitReport(reason: typeof REPORT_REASONS[number]['value']) {
+    if (isAi) {
+      Alert.alert('已提交举报', '管理员会审核这条内容。');
+      return;
+    }
     try {
       setBusy(true);
       await reportStory(story.id, userId, reason);
@@ -61,7 +69,7 @@ export default function StoryCard({ story, userId, compact = false }: Props) {
 
   return (
     <View style={[styles.card, compact && styles.compactCard]}>
-      <Text style={styles.meta}>{isAi ? 'AI 陪伴故事' : story.displayName} · {gamblingTypeLabel(story.gamblingType)}</Text>
+      <Text style={styles.meta}>{story.displayName} · {gamblingTypeLabel(story.gamblingType)}</Text>
       <Text style={styles.title}>{story.title}</Text>
       <Text style={styles.body}>{expanded || compact ? story.body : story.excerpt}</Text>
       {!compact && story.body.length > story.excerpt.length ? (
@@ -69,15 +77,13 @@ export default function StoryCard({ story, userId, compact = false }: Props) {
       ) : null}
       <View style={styles.actions}>
         {ENCOURAGEMENTS.slice(0, compact ? 2 : 5).map((label) => (
-          <TouchableOpacity key={label} style={styles.actionBtn} onPress={() => sendReaction(label)} disabled={busy || isAi}>
-            <Text style={[styles.actionText, isAi && styles.disabledText]}>{label}</Text>
+          <TouchableOpacity key={label} style={styles.actionBtn} onPress={() => sendReaction(label)} disabled={busy}>
+            <Text style={styles.actionText}>{label}</Text>
           </TouchableOpacity>
         ))}
-        {!isAi ? (
-          <TouchableOpacity style={styles.reportBtn} onPress={chooseReport} disabled={busy}>
-            <Text style={styles.reportText}>举报</Text>
-          </TouchableOpacity>
-        ) : null}
+        <TouchableOpacity style={styles.reportBtn} onPress={chooseReport} disabled={busy}>
+          <Text style={styles.reportText}>举报</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );

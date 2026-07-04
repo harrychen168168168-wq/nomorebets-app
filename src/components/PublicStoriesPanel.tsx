@@ -70,7 +70,7 @@ export default function PublicStoriesPanel() {
         {CATEGORIES.map((item) => <TouchableOpacity key={item} style={[styles.categoryBtn, category === item && styles.categoryActive]} onPress={() => setCategory(item)}><Text style={styles.categoryText}>{item}</Text></TouchableOpacity>)}
       </View>
       {!isCommunityConfigured() ? <Text style={styles.notice}>Supabase 未配置：当前无法加载真实跨用户故事。配置后这里会显示 approved 故事。</Text> : null}
-      {stories.length === 0 ? <Text style={styles.empty}>还没有审核通过的真人故事。首页会先用明确标识的 AI 陪伴故事补位。</Text> : stories.map((story) => <StoryCard key={story.id} story={story} userId={user?.id || 'signed_out'} />)}
+      {stories.length === 0 ? <Text style={styles.empty}>还没有审核通过的公开故事。成为第一个分享的人吧。</Text> : stories.map((story) => <StoryCard key={story.id} story={story} userId={user?.id || 'signed_out'} />)}
 
       <View style={styles.submitBox}>
         <Text style={styles.submitTitle}>我也想分享</Text>

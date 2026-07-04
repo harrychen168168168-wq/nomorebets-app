@@ -2,8 +2,10 @@ import { useAuth } from '@/auth';
 import { buildStoryDraftFromRecord, containsSelfHarm, isCommunityConfigured, pushMyGuardianStatus, submitPublicStory } from '@/community';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
+import PaywallModal from '@/components/PaywallModal';
 import { AI_PROXY_URL } from '@/config';
-import { DailyRecord, deleteDailyRecord, getTodayString, readDailyRecords, upsertDailyRecord } from '@/storage';
+import { getSubscriptionSnapshot } from '@/subscription';
+import { DailyRecord, deleteDailyRecord, getTodayString, loadMoneyState, readDailyRecords, upsertDailyRecord } from '@/storage';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -46,6 +48,9 @@ export default function RecordsPage() {
   const [displayMode, setDisplayMode] = useState<'anonymous' | 'nickname'>('anonymous');
   const [weekAnalysis, setWeekAnalysis] = useState('');
   const [analyzing, setAnalyzing] = useState(false);
+  const [isPro, setIsPro] = useState(false);
+  const [showReconvert, setShowReconvert] = useState(false);
+  const [reconvertLoss, setReconvertLoss] = useState(0);
 
   const selectedRecord = records.find((record) => record.date === selectedDate);
 
@@ -58,6 +63,7 @@ export default function RecordsPage() {
 
   useFocusEffect(useCallback(() => {
     refreshRecords();
+    getSubscriptionSnapshot().then((s) => setIsPro(s.isPro)).catch(() => {});
   }, [refreshRecords]));
 
   useEffect(() => {
@@ -115,6 +121,12 @@ export default function RecordsPage() {
     setActiveTab('review');
     // Keep linked guardians' view fresh right after a record is saved.
     if (user) pushMyGuardianStatus(user.id).catch(() => {});
+    // Re-conversion: a just-recorded relapse is the second-hottest moment (non-Pro only).
+    if (form.gambled && !isPro) {
+      const money = await loadMoneyState();
+      setReconvertLoss(money.baselineMonthlySpend);
+      setShowReconvert(true);
+    }
   }
 
   async function removeRecord() {
@@ -354,6 +366,7 @@ export default function RecordsPage() {
         ) : null}
 
         <View style={{ height: 40 }} />
+        <PaywallModal visible={showReconvert} onboardingPrompt monthlyLoss={reconvertLoss} onClose={() => setShowReconvert(false)} onSuccess={() => { setShowReconvert(false); setIsPro(true); }} />
       </KeyboardAwareScrollView>
     </PageContainer>
   );

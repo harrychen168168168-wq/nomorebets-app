@@ -11,7 +11,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Purchases from 'react-native-purchases';
-import { loadData as loadStoredData, resetAllData, saveData as saveStoredData } from '../storage';
+import { computeAge, loadData as loadStoredData, resetAllData, saveData as saveStoredData } from '../storage';
 
 type Contact = { name: string; relation: string; phone: string; photo?: string };
 type Goal = { title: string; target: number; current: number; deadline: string };
@@ -24,13 +24,13 @@ export default function ProfilePage() {
   const { user, isAdmin, isAdminCandidate, signOut, deleteAccount, unlockAdmin, lockAdmin, updateProfile } = useAuth();
   const router = useRouter();
   const [streak, setStreak] = useState(0);
+  const [age, setAge] = useState<number | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [activeSection, setActiveSection] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
-  const [paywallFeature, setPaywallFeature] = useState<string | undefined>();
   const [subscription, setSubscription] = useState<SubscriptionSnapshot | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
@@ -51,10 +51,10 @@ export default function ProfilePage() {
   const isMonthlyPro = subscription?.planType === 'monthly';
   const isAnnualPro = subscription?.planType === 'annual';
   const isMutualPro = subscription?.planType === 'mutual';
-  // Freemium: the local tools (contacts/goals/photos) are free for everyone to maximize retention
-  // and grow the user base. Monetization comes from AI 冲动倾诉 and the guardian feature, which are
-  // gated separately (emergency.tsx for AI, GuardianSharingPanel for invites).
-  const hasFullAccess = true;
+  const isLifetime = subscription?.planType === 'lifetime';
+  // Freemium: all local tools (contacts/goals/photos) are free for everyone to maximize retention.
+  // Monetization comes from AI 冲动倾诉 and the guardian feature, which are gated separately
+  // (emergency.tsx for AI, GuardianSharingPanel for invites).
 
   useEffect(() => {
     setProfileName(user?.displayName || '');
@@ -67,10 +67,11 @@ export default function ProfilePage() {
   }, [user?.id]));
 
   async function loadData() {
-    const [s, c, g] = await Promise.all([loadStoredData('streak'), loadStoredData('importantContacts'), loadStoredData('myGoals')]);
+    const [s, c, g, b] = await Promise.all([loadStoredData('streak'), loadStoredData('importantContacts'), loadStoredData('myGoals'), loadStoredData('birthday')]);
     setStreak(Number(s) || 0);
     setContacts(c ? JSON.parse(c) : []);
     setGoals(g ? JSON.parse(g) : []);
+    setAge(computeAge(b));
   }
 
   async function refreshSubscription() {
@@ -78,13 +79,6 @@ export default function ProfilePage() {
     const snapshot = await getSubscriptionSnapshot();
     setSubscription(snapshot);
     setSubscriptionLoading(false);
-  }
-
-  function requirePro(featureName: string) {
-    if (hasFullAccess) return true;
-    setPaywallFeature(featureName);
-    setShowPaywall(true);
-    return false;
   }
 
   async function handleRestorePurchase() {
@@ -119,35 +113,32 @@ export default function ProfilePage() {
     Alert.alert('已保存', '头像和名字已更新。');
   }
 
+  function requirePro() {
+    if (isPro) return true;
+    setShowPaywall(true);
+    return false;
+  }
+
   async function pickPhoto() {
-    if (!requirePro('联系人照片')) return;
+    if (!requirePro()) return;
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.5 });
     if (!result.canceled) setNewContactPhoto(result.assets[0].uri);
   }
 
   function startAddContact() {
-    if (!hasFullAccess && contacts.length >= FREE_CONTACT_LIMIT) {
-      requirePro('添加更多重要联系人');
-      return;
-    }
+    if (!isPro && contacts.length >= FREE_CONTACT_LIMIT) { setShowPaywall(true); return; }
     setActiveSection('contact');
   }
 
   function startAddGoal() {
-    if (!hasFullAccess && goals.length >= FREE_GOAL_LIMIT) {
-      requirePro('添加更多戒赌目标');
-      return;
-    }
+    if (!isPro && goals.length >= FREE_GOAL_LIMIT) { setShowPaywall(true); return; }
     setActiveSection('goal');
   }
 
   async function saveContact() {
     if (!newContactName.trim()) return;
-    if (!hasFullAccess && contacts.length >= FREE_CONTACT_LIMIT) {
-      requirePro('添加更多重要联系人');
-      return;
-    }
-    const newContact: Contact = { name: newContactName.trim(), relation: newContactRelation || '重要的人', phone: newContactPhone.trim(), photo: hasFullAccess ? newContactPhoto : '' };
+    if (!isPro && contacts.length >= FREE_CONTACT_LIMIT) { setShowPaywall(true); return; }
+    const newContact: Contact = { name: newContactName.trim(), relation: newContactRelation || '重要的人', phone: newContactPhone.trim(), photo: isPro ? newContactPhoto : '' };
     const updated = [...contacts, newContact];
     await saveStoredData('importantContacts', JSON.stringify(updated));
     setContacts(updated);
@@ -166,10 +157,7 @@ export default function ProfilePage() {
 
   async function saveGoal() {
     if (!newGoalTitle.trim()) return;
-    if (!hasFullAccess && goals.length >= FREE_GOAL_LIMIT) {
-      requirePro('添加更多戒赌目标');
-      return;
-    }
+    if (!isPro && goals.length >= FREE_GOAL_LIMIT) { setShowPaywall(true); return; }
     const newGoal: Goal = { title: newGoalTitle.trim(), target: Number(newGoalTarget) || 0, current: Number(newGoalCurrent) || 0, deadline: newGoalDeadline.trim() };
     const updated = [...goals, newGoal];
     await saveStoredData('myGoals', JSON.stringify(updated));
@@ -238,6 +226,7 @@ export default function ProfilePage() {
 
   function subscriptionDescription() {
     if (subscriptionLoading) return '正在刷新订阅状态...';
+    if (isLifetime) return '终身会员：一次买断，永久解锁全部功能，无需续订。';
     const remaining = subscriptionRemainingDaysText();
     const renewalDate = '到期/续订日期：' + formatSubscriptionDate(subscription?.expirationDate);
     if (isMutualPro) return remaining + ' · ' + renewalDate + ' · 互相守护版：双方各自 AI 每月 100 次。';
@@ -249,7 +238,7 @@ export default function ProfilePage() {
   return (
     <PageContainer>
       <KeyboardAwareScrollView style={styles.container}>
-        <View style={styles.header}><Text style={styles.headerTitle}>我的</Text><Text style={styles.headerStreak}>已坚持 {streak} 天</Text></View>
+        <View style={styles.header}><Text style={styles.headerTitle}>我的</Text><Text style={styles.headerStreak}>已坚持 {streak} 天{age !== null ? ' · ' + age + ' 岁' : ''}</Text></View>
 
         <View style={styles.accountCard}>
           <TouchableOpacity style={styles.accountAvatar} onPress={() => setEditingProfile(true)}>
@@ -279,15 +268,15 @@ export default function ProfilePage() {
         <View style={[styles.subscriptionCard, isPro && styles.subscriptionCardActive]}>
           <View style={styles.subscriptionTopRow}>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.subscriptionTitle, isPro && styles.subscriptionTitleActive]}>{isMutualPro ? '互相守护版已激活' : isAnnualPro ? '家庭守护版已激活' : isMonthlyPro ? '个人自救版已激活' : '会员方案'}</Text>
+              <Text style={[styles.subscriptionTitle, isPro && styles.subscriptionTitleActive]}>{isMutualPro ? '互相守护版已激活' : isAnnualPro ? '家庭守护版已激活' : isMonthlyPro ? '个人自救版已激活' : isLifetime ? '终身会员已激活' : '会员方案'}</Text>
               <Text style={styles.subscriptionSub}>{subscriptionDescription()}</Text>
             </View>
             {subscriptionLoading ? <ActivityIndicator color="#2E7D32" /> : null}
           </View>
           {subscription?.error && !isPro ? <Text style={styles.subscriptionWarn}>{subscription.error}</Text> : null}
           <View style={styles.subscriptionActions}>
-            {!isPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => { setPaywallFeature(undefined); setShowPaywall(true); }}><Text style={styles.subscriptionPrimaryText}>查看会员方案</Text></TouchableOpacity>}
-            {isMonthlyPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => { setPaywallFeature(undefined); setShowPaywall(true); }}><Text style={styles.subscriptionPrimaryText}>升级家庭守护版</Text></TouchableOpacity>}
+            {!isPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => setShowPaywall(true)}><Text style={styles.subscriptionPrimaryText}>查看会员方案</Text></TouchableOpacity>}
+            {isMonthlyPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => setShowPaywall(true)}><Text style={styles.subscriptionPrimaryText}>升级家庭守护版</Text></TouchableOpacity>}
             <TouchableOpacity style={styles.subscriptionSecondary} onPress={handleRestorePurchase} disabled={restoreLoading}>{restoreLoading ? <ActivityIndicator color="#2E7D32" /> : <Text style={styles.subscriptionSecondaryText}>恢复购买</Text>}</TouchableOpacity>
             <TouchableOpacity style={styles.subscriptionSecondary} onPress={openSubscriptionManagement}><Text style={styles.subscriptionSecondaryText}>管理订阅</Text></TouchableOpacity>
           </View>
@@ -316,7 +305,7 @@ export default function ProfilePage() {
         )}
 
         <View style={styles.card}>
-          <View style={styles.cardTitleRow}><Text style={styles.cardTitle}>重要的人</Text>{!hasFullAccess && <Text style={styles.freeBadge}>免费 {contacts.length}/{FREE_CONTACT_LIMIT}</Text>}</View>
+          <Text style={styles.cardTitle}>重要的人</Text>
           <Text style={styles.cardSub}>危急时刻，他们是你最重要的力量。可以添加多位联系人和照片。</Text>
           {contacts.map((c, i) => (
             <View key={c.name + i} style={styles.contactRow}>
@@ -331,14 +320,14 @@ export default function ProfilePage() {
               <TextInput style={styles.inputBox} placeholder="姓名" value={newContactName} onChangeText={setNewContactName} />
               <View style={styles.relationRow}>{RELATIONS.map((r) => <TouchableOpacity key={r} style={[styles.relationBtn, newContactRelation === r && styles.relationSelected]} onPress={() => setNewContactRelation(r)}><Text style={[styles.relationText, newContactRelation === r && styles.relationTextSelected]}>{r}</Text></TouchableOpacity>)}</View>
               <TextInput style={styles.inputBox} placeholder="电话号码（可选）" value={newContactPhone} onChangeText={setNewContactPhone} keyboardType="phone-pad" />
-              <TouchableOpacity style={[styles.photoBtn, !hasFullAccess && styles.photoBtnLocked]} onPress={pickPhoto}>{newContactPhoto ? <Image source={{ uri: newContactPhoto }} style={styles.photoPreview} /> : <Text style={styles.photoBtnText}>{hasFullAccess ? '添加照片（可选）' : '联系人照片为家庭守护版功能'}</Text>}</TouchableOpacity>
+              <TouchableOpacity style={styles.photoBtn} onPress={pickPhoto}>{newContactPhoto ? <Image source={{ uri: newContactPhoto }} style={styles.photoPreview} /> : <Text style={styles.photoBtnText}>{isPro ? '添加照片（可选）' : '添加照片（会员功能）'}</Text>}</TouchableOpacity>
               <View style={styles.formBtns}><TouchableOpacity style={styles.btnCancel} onPress={() => setActiveSection('')}><Text style={styles.btnCancelText}>取消</Text></TouchableOpacity><TouchableOpacity style={styles.btnSave} onPress={saveContact}><Text style={styles.btnSaveText}>保存</Text></TouchableOpacity></View>
             </View>
           ) : <TouchableOpacity style={styles.btnAdd} onPress={startAddContact}><Text style={styles.btnAddText}>+ 添加重要的人</Text></TouchableOpacity>}
         </View>
 
         <View style={styles.card}>
-          <View style={styles.cardTitleRow}><Text style={styles.cardTitle}>我的目标</Text>{!hasFullAccess && <Text style={styles.freeBadge}>免费 {goals.length}/{FREE_GOAL_LIMIT}</Text>}</View>
+          <Text style={styles.cardTitle}>我的目标</Text>
           <Text style={styles.cardSub}>把节省下来的钱用在真正重要的事上。可以添加多个目标。</Text>
           {goals.map((g, i) => {
             const progress = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
@@ -394,7 +383,7 @@ export default function ProfilePage() {
         </View>
 
         <View style={{ height: 40 }} />
-        <PaywallModal visible={showPaywall} featureName={paywallFeature} onClose={() => setShowPaywall(false)} onSuccess={() => { setShowPaywall(false); refreshSubscription(); }} />
+        <PaywallModal visible={showPaywall} onClose={() => setShowPaywall(false)} onSuccess={() => { setShowPaywall(false); refreshSubscription(); }} />
       </KeyboardAwareScrollView>
     </PageContainer>
   );
@@ -437,9 +426,7 @@ const styles = StyleSheet.create({
   adminLockBtn: { alignItems: 'center', paddingTop: 10 },
   adminLockText: { fontSize: 12, color: '#1565C0', textDecorationLine: 'underline' },
   card: { backgroundColor: '#fff', margin: 16, marginBottom: 8, borderRadius: 16, padding: 20 },
-  cardTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
   cardTitle: { fontSize: 17, fontWeight: 'bold', color: '#333', marginBottom: 4 },
-  freeBadge: { fontSize: 11, color: '#2E7D32', backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, overflow: 'hidden' },
   cardSub: { fontSize: 13, color: '#888', marginBottom: 16, lineHeight: 19 },
   contactRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f5f5f5', gap: 8 },
   contactPhoto: { width: 44, height: 44, borderRadius: 22 },
@@ -457,7 +444,6 @@ const styles = StyleSheet.create({
   relationText: { fontSize: 13, color: '#555' },
   relationTextSelected: { color: '#2E7D32', fontWeight: 'bold' },
   photoBtn: { borderWidth: 1.5, borderColor: '#ddd', borderRadius: 10, padding: 14, alignItems: 'center', marginBottom: 10 },
-  photoBtnLocked: { backgroundColor: '#F8FAF7' },
   photoBtnText: { color: '#888', fontSize: 14 },
   photoPreview: { width: 80, height: 80, borderRadius: 40 },
   formBtns: { flexDirection: 'row', gap: 10 },

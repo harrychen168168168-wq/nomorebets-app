@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
-import { AI_PROXY_URL, ANNUAL_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, REVENUECAT_ENTITLEMENT_ID, REVENUECAT_IOS_KEY } from './config';
+import { AI_PROXY_URL, ANNUAL_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, REVENUECAT_ENTITLEMENT_ID, REVENUECAT_IOS_KEY } from './config';
 
 const FALLBACK_ENTITLEMENT_IDS = ['pro', 'premium', 'NO_MORE_BETS_PRO'];
 const ENTITLEMENT_IDS = Array.from(new Set([REVENUECAT_ENTITLEMENT_ID, ...FALLBACK_ENTITLEMENT_IDS].filter(Boolean)));
@@ -8,7 +8,7 @@ const APPLE_SUBSCRIPTION_MANAGE_URL = 'https://apps.apple.com/account/subscripti
 
 let configured = false;
 
-export type PlanType = 'monthly' | 'annual' | 'mutual' | 'unknown' | 'none';
+export type PlanType = 'monthly' | 'annual' | 'mutual' | 'lifetime' | 'unknown' | 'none';
 
 export type SubscriptionSnapshot = {
   isPro: boolean;
@@ -59,9 +59,11 @@ export function getSubscriptionManageUrl(customerInfo?: CustomerInfo | null) {
 export function inferPlanType(productIdentifier?: string | null): PlanType {
   const id = normalizeId(productIdentifier);
   if (!id) return 'none';
+  if (matchesProductId(id, LIFETIME_PRODUCT_IDS)) return 'lifetime';
   if (matchesProductId(id, MUTUAL_PRODUCT_IDS)) return 'mutual';
   if (matchesProductId(id, ANNUAL_PRODUCT_IDS)) return 'annual';
   if (matchesProductId(id, MONTHLY_PRODUCT_IDS)) return 'monthly';
+  if (id.includes('lifetime') || id.includes('forever')) return 'lifetime';
   if (id.includes('mutual') || id.includes('couple') || id.includes('partner') || id.includes('duo')) return 'mutual';
   if (id.includes('annual') || id.includes('year') || id.includes('yearly')) return 'annual';
   if (id.includes('month') || id.includes('monthly')) return 'monthly';
@@ -84,6 +86,8 @@ function collectProductIds(customerInfo: CustomerInfo, entitlement: any) {
 }
 
 function resolvePlanFromProducts(productIds: string[], fallbackProductId?: string | null): { planType: PlanType; productIdentifier?: string } {
+  const lifetime = productIds.find((id) => matchesProductId(id, LIFETIME_PRODUCT_IDS) || inferPlanType(id) === 'lifetime');
+  if (lifetime) return { planType: 'lifetime', productIdentifier: lifetime };
   const mutual = productIds.find((id) => matchesProductId(id, MUTUAL_PRODUCT_IDS) || inferPlanType(id) === 'mutual');
   if (mutual) return { planType: 'mutual', productIdentifier: mutual };
   const annual = productIds.find((id) => matchesProductId(id, ANNUAL_PRODUCT_IDS) || inferPlanType(id) === 'annual');

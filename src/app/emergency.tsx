@@ -57,7 +57,8 @@ export default function EmergencyPage() {
 
   const refreshAiEligibility = useCallback(async () => {
     const snapshot = await getSubscriptionSnapshot();
-    let eligible = snapshot.planType === 'monthly' || snapshot.planType === 'annual' || snapshot.planType === 'mutual';
+    // Any active Pro entitlement unlocks AI — including the lifetime buyout (planType 'lifetime').
+    let eligible = snapshot.isPro;
     // Invited family/mutual guardian members do not have their own subscription, but the AI proxy
     // grants them shared quota. Let an active guardian link open the chat; the server makes the
     // final decision (and shows a fallback if the payer's plan is no longer active).
@@ -247,7 +248,7 @@ export default function EmergencyPage() {
                 {aiMessages.map((msg, i) => <View key={i} style={[styles.chatBubble, msg.role === 'user' ? styles.chatUser : styles.chatAi]}><Text style={[styles.chatText, msg.role === 'user' ? styles.chatUserText : styles.chatAiText]}>{msg.text}</Text></View>)}
                 {aiLoading && <View style={styles.chatAi}><Text style={styles.chatAiText}>正在回复...</Text></View>}
               </ScrollView>
-              {aiUsage ? <View style={styles.aiUsageBox}><Text style={styles.aiUsageText}>本月基础额度剩余：{aiUsage.monthlyRemaining ?? 0}/{aiUsage.monthlyLimit ?? 100}</Text><Text style={styles.aiUsageText}>加购包余额：${(((aiUsage.addonCreditCentsRemaining ?? 0) / 100).toFixed(2))}</Text></View> : null}
+              {aiUsage ? <View style={styles.aiUsageBox}><Text style={styles.aiUsageText}>本月基础额度剩余：{aiUsage.monthlyRemaining ?? 0}/{aiUsage.monthlyLimit ?? '—'}</Text><Text style={styles.aiUsageText}>加购包余额：${(((aiUsage.addonCreditCentsRemaining ?? 0) / 100).toFixed(2))}</Text></View> : null}
               {aiNeedsAddon ? <TouchableOpacity style={styles.aiAddonBtn} onPress={buyAiAddon} disabled={aiAddonLoading}><Text style={styles.aiAddonBtnText}>{aiAddonLoading ? '购买中...' : '购买 AI 加购包'}</Text></TouchableOpacity> : null}
               {aiError ? <Text style={styles.aiError}>{aiError}</Text> : null}
               <View style={styles.chatInputRow}><TextInput style={styles.chatInput} placeholder="说说你的感受..." value={aiInput} onChangeText={setAiInput} multiline /><TouchableOpacity style={styles.chatSend} onPress={sendAiMessage}><Text style={styles.chatSendText}>发送</Text></TouchableOpacity></View>

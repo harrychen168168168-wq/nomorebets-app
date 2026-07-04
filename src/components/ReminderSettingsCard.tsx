@@ -64,7 +64,7 @@ export default function ReminderSettingsCard() {
     await persist({ ...settings, enabled: value });
   }
 
-  function shiftHour(field: 'nightlyHour' | 'weekendHour' | 'paydayHour', delta: number) {
+  function shiftHour(field: 'morningHour' | 'nightlyHour' | 'weekendHour' | 'paydayHour', delta: number) {
     const next = (settings[field] + delta + 24) % 24;
     persist({ ...settings, [field]: next });
   }
@@ -94,6 +94,23 @@ export default function ReminderSettingsCard() {
           <Text style={styles.permWarnText}>系统通知权限未开启，提醒不会送达。点这里去“设置”打开通知。</Text>
         </TouchableOpacity>
       )}
+
+      <View style={[styles.row, disabled && styles.rowDisabled]}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.rowTitle}>☀️ 每天早安</Text>
+          <Text style={styles.rowSub}>每天早上一句温柔的问候，陪你开始新的一天。</Text>
+        </View>
+        <View style={styles.rowRight}>
+          {settings.morningEnabled && (
+            <View style={styles.stepper}>
+              <TouchableOpacity disabled={disabled} onPress={() => shiftHour('morningHour', -1)} style={styles.stepBtn}><Text style={styles.stepBtnText}>−</Text></TouchableOpacity>
+              <Text style={styles.stepValue}>{formatHour(settings.morningHour)}</Text>
+              <TouchableOpacity disabled={disabled} onPress={() => shiftHour('morningHour', 1)} style={styles.stepBtn}><Text style={styles.stepBtnText}>＋</Text></TouchableOpacity>
+            </View>
+          )}
+          <Switch disabled={disabled} value={settings.morningEnabled} onValueChange={(v) => persist({ ...settings, morningEnabled: v })} trackColor={{ true: '#2E7D32', false: '#ccc' }} />
+        </View>
+      </View>
 
       <View style={[styles.row, disabled && styles.rowDisabled]}>
         <View style={{ flex: 1 }}>
@@ -129,7 +146,7 @@ export default function ReminderSettingsCard() {
         </View>
       </View>
 
-      <View style={[styles.row, styles.rowLast, disabled && styles.rowDisabled]}>
+      <View style={[styles.row, disabled && styles.rowDisabled]}>
         <View style={{ flex: 1 }}>
           <Text style={styles.rowTitle}>💰 发薪日提醒</Text>
           <Text style={styles.rowSub}>钱刚到手时冲动最大。设好每月发薪的日子。</Text>
@@ -155,6 +172,14 @@ export default function ReminderSettingsCard() {
           )}
         </View>
         <Switch disabled={disabled} value={settings.paydayEnabled} onValueChange={(v) => persist({ ...settings, paydayEnabled: v })} trackColor={{ true: '#2E7D32', false: '#ccc' }} />
+      </View>
+
+      <View style={[styles.row, styles.rowLast, disabled && styles.rowDisabled]}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.rowTitle}>🎂 生日祝福</Text>
+          <Text style={styles.rowSub}>生日当天 0 点送你一句祝福。需要在资料里填写生日。</Text>
+        </View>
+        <Switch disabled={disabled} value={settings.birthdayEnabled} onValueChange={(v) => persist({ ...settings, birthdayEnabled: v })} trackColor={{ true: '#2E7D32', false: '#ccc' }} />
       </View>
     </View>
   );

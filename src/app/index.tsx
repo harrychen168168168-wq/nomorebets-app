@@ -1,10 +1,14 @@
-import PageContainer from '@/components/PageContainer';
 import HomeCompanionStories from '@/components/HomeCompanionStories';
 import MoneySavedCard from '@/components/MoneySavedCard';
+import PageContainer from '@/components/PageContainer';
+import PaywallModal from '@/components/PaywallModal';
+import PlanTodayCard from '@/components/PlanTodayCard';
+import { getReminderSettings } from '@/notifications';
+import { getSubscriptionSnapshot } from '@/subscription';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { checkInNoGamble, claimProtectionCardToday, completeAccompany, completeWalk, getProtectionState, loadAppState } from '../storage';
+import { checkInNoGamble, claimProtectionCardToday, completeAccompany, completeWalk, getProtectionState, getTodayString, loadAppState, loadData, loadMoneyState, saveData } from '../storage';
 
 const QUOTES = [
   '赌场赢的是概率，你赢回的是人生。',
@@ -36,6 +40,9 @@ export default function HomePage() {
   const [todayGambled, setTodayGambled] = useState(false);
   const [protectionAvailable, setProtectionAvailable] = useState(0);
   const [todayProtected, setTodayProtected] = useState(false);
+  const [isPro, setIsPro] = useState(false);
+  const [showReconvert, setShowReconvert] = useState(false);
+  const [reconvertLoss, setReconvertLoss] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -49,10 +56,14 @@ export default function HomePage() {
         setAccompanied(state.accompaniedToday);
         setMonthlyLoss(state.monthlyLoss);
         setTodayGambled(state.todayGambled);
-        const prot = await getProtectionState();
+        const snap = await getSubscriptionSnapshot();
+        const pro = snap.isPro;
+        setIsPro(pro);
+        const prot = await getProtectionState(pro ? 3 : 1);
         setProtectionAvailable(prot.available);
         setTodayProtected(prot.todayProtected);
         setLoading(false);
+        if (!pro) maybeReconvert(state.streak);
       };
       init();
     }, [])
@@ -80,18 +91,42 @@ export default function HomePage() {
   }
 
   async function handleUseProtection() {
-    const ok = await claimProtectionCardToday();
+    const max = isPro ? 3 : 1;
+    const ok = await claimProtectionCardToday(max);
     if (!ok) {
-      Alert.alert('本月保护卡已用完', '每个日历月有 1 张保护卡，下个月会恢复。');
+      Alert.alert('本月保护卡已用完', isPro ? '每个日历月有 3 张保护卡，下个月会恢复。' : '免费版每月 1 张保护卡；升级会员每月 3 张。');
       return;
     }
     const state = await loadAppState();
     setStreak(state.streak);
     setLongestStreak(state.longestStreak);
-    const prot = await getProtectionState();
+    const prot = await getProtectionState(max);
     setProtectionAvailable(prot.available);
     setTodayProtected(prot.todayProtected);
     Alert.alert('已用保护卡 🛡️', '今天的记录不会中断你的连续天数。这不是失败，是重新站稳。');
+  }
+
+  // Re-conversion at hot moments: day-7 streak and payday (non-Pro only, once each).
+  async function openReconvert() {
+    const money = await loadMoneyState();
+    setReconvertLoss(money.baselineMonthlySpend);
+    setShowReconvert(true);
+  }
+
+  async function maybeReconvert(currentStreak: number) {
+    const today = getTodayString();
+    const month = today.slice(0, 7);
+    if (currentStreak >= 7 && !(await loadData('reconv_day7'))) {
+      await saveData('reconv_day7', '1');
+      openReconvert();
+      return;
+    }
+    const settings = await getReminderSettings();
+    const dayNum = Number(today.slice(8, 10));
+    if (settings.paydayEnabled && dayNum === settings.paydayDay && !(await loadData('reconv_payday_' + month))) {
+      await saveData('reconv_payday_' + month, '1');
+      openReconvert();
+    }
   }
 
   async function handleWalk() {
@@ -149,6 +184,8 @@ export default function HomePage() {
 
         <MoneySavedCard />
 
+        <PlanTodayCard />
+
         <View style={styles.pledgeCard}>
           {todayChecked && !todayGambled ? (
             <>
@@ -202,6 +239,7 @@ export default function HomePage() {
         </View>
 
         <HomeCompanionStories />
+        <PaywallModal visible={showReconvert} onboardingPrompt monthlyLoss={reconvertLoss} onClose={() => setShowReconvert(false)} onSuccess={() => { setShowReconvert(false); setIsPro(true); }} />
         <View style={{ height: 40 }} />
       </ScrollView>
     </PageContainer>

@@ -27,7 +27,8 @@ export default function GuardianSharingPanel({ subscription }: Props) {
   const [linked, setLinked] = useState<LinkedStatus[]>([]);
 
   const planType = subscription?.planType;
-  const canInviteFamily = planType === 'annual';
+  // Lifetime buyout = full access, so it can also invite one family member (one-way guardian).
+  const canInviteFamily = planType === 'annual' || planType === 'lifetime';
   const canInviteMutual = planType === 'mutual';
 
   const load = useCallback(async () => {

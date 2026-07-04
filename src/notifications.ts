@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import { loadData, saveData } from './storage';
+import { getCurrentUserName, loadData, saveData } from './storage';
 
 // Local high-risk-time reminders — fully on-device, NO push server / APNs.
 // Research gap #1 for this category is proactive trigger-time intervention: a gentle nudge at
@@ -10,6 +10,8 @@ import { loadData, saveData } from './storage';
 
 export type ReminderSettings = {
   enabled: boolean;
+  morningEnabled: boolean;
+  morningHour: number; // 0-23
   nightlyEnabled: boolean;
   nightlyHour: number; // 0-23
   weekendEnabled: boolean;
@@ -17,13 +19,18 @@ export type ReminderSettings = {
   paydayEnabled: boolean;
   paydayDay: number; // 1-31 (clamped to month length)
   paydayHour: number; // 0-23
+  birthdayEnabled: boolean;
 };
 
 const REMINDER_KEY = 'reminderSettings';
 const PAYDAY_MONTHS_AHEAD = 6;
 
 export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
-  enabled: false,
+  // Default ON for retention — the daily nudge is the single biggest thing that keeps a habit app
+  // alive. Permission is requested at onboarding; without it syncReminders schedules nothing.
+  enabled: true,
+  morningEnabled: true,
+  morningHour: 9,
   nightlyEnabled: true,
   nightlyHour: 21,
   weekendEnabled: true,
@@ -31,7 +38,16 @@ export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
   paydayEnabled: false,
   paydayDay: 15,
   paydayHour: 10,
+  birthdayEnabled: true,
 };
+
+const MORNING_MESSAGES = [
+  '早安。新的一天开始了，昨天的你已经很努力，今天也慢慢来。',
+  '早上好。先给自己倒杯水，深呼吸一下。今天你依然可以守住自己。',
+  '新的一天。你不需要一次赢下整场，只要过好今天这一天就够了。',
+  '早安。想想你真正想守护的人和事，让它陪你度过今天。',
+  '起床了。又是不赌的一天的开始，为决定这样过日子的你骄傲。',
+];
 
 const NIGHTLY_MESSAGES = [
   '夜深了，这是一天里最容易冲动的时刻。打开 App，记录今天，给自己一句承诺。',
@@ -113,6 +129,25 @@ function nextPaydayDates(day: number, hour: number, count = PAYDAY_MONTHS_AHEAD)
   return result;
 }
 
+function birthdayMessage(name: string) {
+  const who = name ? name + '，' : '';
+  return who + '祝你生日快乐 🎂 又陪自己走过了一年。今天，好好爱自己，也为坚持到现在的你骄傲。';
+}
+
+// The next occurrence of the user's birthday at 00:00 (this year if still ahead, else next year).
+// Scheduled as a one-shot DATE so it survives even if the app is never opened; re-armed each open.
+function nextBirthdayDate(birthday?: string | null): Date | null {
+  if (!birthday) return null;
+  const parts = String(birthday).split('-').map(Number);
+  if (parts.length < 3) return null;
+  const [, month, day] = parts;
+  if (!month || !day) return null;
+  const now = new Date();
+  let target = new Date(now.getFullYear(), month - 1, day, 0, 0, 0, 0);
+  if (target.getTime() <= now.getTime()) target = new Date(now.getFullYear() + 1, month - 1, day, 0, 0, 0, 0);
+  return Number.isFinite(target.getTime()) ? target : null;
+}
+
 // Cancel everything and rebuild the schedule from settings. Safe to call on every app open.
 export async function syncReminders(settingsInput?: ReminderSettings) {
   if (Platform.OS === 'web') return;
@@ -120,6 +155,13 @@ export async function syncReminders(settingsInput?: ReminderSettings) {
   await Notifications.cancelAllScheduledNotificationsAsync();
   if (!settings.enabled) return;
   if (!(await getPermissionGranted())) return;
+
+  if (settings.morningEnabled) {
+    await Notifications.scheduleNotificationAsync({
+      content: { title: '早安 ☀️', body: pick(MORNING_MESSAGES), sound: true },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: clampHour(settings.morningHour), minute: 0 },
+    });
+  }
 
   if (settings.nightlyEnabled) {
     await Notifications.scheduleNotificationAsync({
@@ -143,6 +185,16 @@ export async function syncReminders(settingsInput?: ReminderSettings) {
       await Notifications.scheduleNotificationAsync({
         content: { title: '发薪日，钱在手里时最危险 💰', body: pick(PAYDAY_MESSAGES), sound: true },
         trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date },
+      });
+    }
+  }
+
+  if (settings.birthdayEnabled) {
+    const birthdayDate = nextBirthdayDate(await loadData('birthday'));
+    if (birthdayDate) {
+      await Notifications.scheduleNotificationAsync({
+        content: { title: '🎂 生日快乐', body: birthdayMessage(await getCurrentUserName()), sound: true },
+        trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: birthdayDate },
       });
     }
   }

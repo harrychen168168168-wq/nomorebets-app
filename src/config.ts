@@ -5,6 +5,7 @@ export const REVENUECAT_ENTITLEMENT_ID = 'NO MORE BETS Pro';
 export const MONTHLY_PRODUCT_IDS = ['com.nomorebets.app.monthly'];
 export const ANNUAL_PRODUCT_IDS = ['com.nomorebets.app.yearly'];
 export const MUTUAL_PRODUCT_IDS = ['com.nomorebets.app.mutual_yearly'];
+export const LIFETIME_PRODUCT_IDS = ['com.nomorebets.app.lifetime']; // 非消耗型买断（待 ASC 建 SKU）
 
 export const ADMIN_EMAILS = ['harrychen168168168@gmail.com'];
 export const ADMIN_LOCAL_PIN = '168168';
@@ -14,6 +15,7 @@ export const GOOGLE_WEB_CLIENT_ID = '';
 
 export const AI_PROXY_URL = 'https://nomorebets-app.onrender.com/ai/chat';
 export const AI_ADDON_10_PRODUCT_ID = 'nomorebets_ai_addon_999';
+export const AI_ADDON_5_PRODUCT_ID = 'nomorebets_ai_addon_499'; // $4.99 冲动小包（待 ASC 建 SKU）
 
 export const PRIVACY_POLICY_URL = 'https://nezha2capital.com/privacy-policy';
 export const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';

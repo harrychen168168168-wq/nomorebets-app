@@ -23,6 +23,7 @@ const APP_DATA_KEYS = [
   'myGoals',
   'whyQuit',
   'futureLetter',
+  'birthday',
   'myStory',
   'myStoryName',
   'myStories',
@@ -53,6 +54,32 @@ async function getCurrentUserId() {
   } catch {
     return 'signed_out';
   }
+}
+
+// The signed-in user's display name (for personalizing e.g. the birthday notification).
+export async function getCurrentUserName(): Promise<string> {
+  const raw = await AsyncStorage.getItem(CURRENT_USER_KEY);
+  if (!raw) return '';
+  try {
+    return String(JSON.parse(raw)?.displayName || '');
+  } catch {
+    return '';
+  }
+}
+
+// Age from a 'YYYY-MM-DD' birthday. Returns null if missing/malformed/out of a sane range.
+export function computeAge(birthday?: string | null): number | null {
+  if (!birthday) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthday.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  const hadBirthdayThisYear = today.getMonth() + 1 > month || (today.getMonth() + 1 === month && today.getDate() >= day);
+  if (!hadBirthdayThisYear) age -= 1;
+  return age >= 0 && age < 130 ? age : null;
 }
 
 async function scopedKey(key: string) {
@@ -382,22 +409,22 @@ async function getProtectedDates(): Promise<string[]> {
 
 const PROTECTION_CARDS_PER_MONTH = 1;
 
-export async function getProtectionState() {
+export async function getProtectionState(maxPerMonth = PROTECTION_CARDS_PER_MONTH) {
   const today = getTodayString();
   const month = today.slice(0, 7);
   const dates = await getProtectedDates();
   const usedThisMonth = dates.filter((d) => d.startsWith(month)).length;
-  return { available: Math.max(0, PROTECTION_CARDS_PER_MONTH - usedThisMonth), todayProtected: dates.includes(today) };
+  return { available: Math.max(0, maxPerMonth - usedThisMonth), todayProtected: dates.includes(today) };
 }
 
 // Use this month's protection card on today so a slip does not reset the streak (research: streak
 // freezes cut all-or-nothing abandonment). Returns false if none left this month.
-export async function claimProtectionCardToday(): Promise<boolean> {
+export async function claimProtectionCardToday(maxPerMonth = PROTECTION_CARDS_PER_MONTH): Promise<boolean> {
   const today = getTodayString();
   const dates = await getProtectedDates();
   if (dates.includes(today)) return true;
   const month = today.slice(0, 7);
-  if (dates.filter((d) => d.startsWith(month)).length >= PROTECTION_CARDS_PER_MONTH) return false;
+  if (dates.filter((d) => d.startsWith(month)).length >= maxPerMonth) return false;
   dates.push(today);
   await setScopedItem('protectedDates', JSON.stringify(dates));
   await syncAppStateFromRecords();

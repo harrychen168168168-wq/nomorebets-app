@@ -1,29 +1,14 @@
 import LoginScreen from '@/app/login';
-import FirstProfileSetup from '@/components/FirstProfileSetup';
-import PaywallModal from '@/components/PaywallModal';
+import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import { AuthProvider, useAuth } from '@/auth';
 import { supabaseInitError } from '@/supabase';
+import { SUPPORT_EMAIL } from '@/config';
 import { configureRevenueCat } from '@/subscription';
 import { syncReminders } from '@/notifications';
-import { loadData, saveData } from '@/storage';
 import * as Notifications from 'expo-notifications';
 import { Tabs } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Text, View } from 'react-native';
-
-// TEMP (build 24 startup-crash diagnosis): surface an uncaught JS error as an alert instead of a
-// silent native abort, so we can read what actually failed. Remove once startup is confirmed stable.
-const _global: any = globalThis as any;
-if (_global?.ErrorUtils?.setGlobalHandler && !_global.__nmbErrorHandlerSet) {
-  _global.__nmbErrorHandlerSet = true;
-  _global.ErrorUtils.setGlobalHandler((error: any) => {
-    try {
-      Alert.alert('启动出错（请截图发我）', String((error && (error.message || error)) || 'unknown').slice(0, 500));
-    } catch {
-      // alert itself failed — nothing more we can do
-    }
-  });
-}
+import { useEffect } from 'react';
+import { ActivityIndicator, AppState, Text, View } from 'react-native';
 
 // Foreground presentation for our local high-risk-time reminders (banner + sound, no badge).
 try {
@@ -41,27 +26,6 @@ try {
 
 function AppShell() {
   const { user, loading } = useAuth();
-  const [showOnboardingPaywall, setShowOnboardingPaywall] = useState(false);
-  const previousProfileComplete = useRef<boolean | null>(null);
-
-  useEffect(() => {
-    if (!user) {
-      previousProfileComplete.current = null;
-      setShowOnboardingPaywall(false);
-      return;
-    }
-    const wasComplete = previousProfileComplete.current;
-    const isComplete = !!user.profileComplete;
-    if (wasComplete === false && isComplete) {
-      loadData('onboardingPaywallShown').then(async (shown) => {
-        if (!shown) {
-          await saveData('onboardingPaywallShown', '1');
-          setShowOnboardingPaywall(true);
-        }
-      });
-    }
-    previousProfileComplete.current = isComplete;
-  }, [user?.id, user?.profileComplete]);
 
   // Rebuild the rolling local-reminder schedule on sign-in and whenever the app comes to the
   // foreground (keeps the payday window fresh and re-applies any settings changes).
@@ -76,9 +40,10 @@ function AppShell() {
 
   if (supabaseInitError) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF8E7', padding: 24 }}>
-        <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#7A4C00', marginBottom: 12 }}>启动错误（请截图发我）</Text>
-        <Text selectable style={{ fontSize: 13, color: '#5D4037', lineHeight: 20 }}>{supabaseInitError}</Text>
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAF7', padding: 24 }}>
+        <Text style={{ fontSize: 17, fontWeight: 'bold', color: '#2E7D32', marginBottom: 10 }}>暂时无法启动</Text>
+        <Text style={{ fontSize: 14, color: '#555', textAlign: 'center', lineHeight: 21, marginBottom: 14 }}>请检查网络后重新打开 App。如果问题一直出现，请发邮件到 {SUPPORT_EMAIL} 联系我们。</Text>
+        <Text selectable style={{ fontSize: 11, color: '#9AA59C', lineHeight: 16 }}>{supabaseInitError}</Text>
       </View>
     );
   }
@@ -94,10 +59,9 @@ function AppShell() {
 
   if (!user) return <LoginScreen />;
 
-  if (!user.profileComplete) return <FirstProfileSetup />;
+  if (!user.profileComplete) return <OnboardingFlow />;
 
   return (
-    <>
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#2E7D32',
@@ -120,14 +84,6 @@ function AppShell() {
       <Tabs.Screen name="admin" options={{ href: null }} />
       <Tabs.Screen name="login" options={{ href: null }} />
     </Tabs>
-    <PaywallModal
-      visible={showOnboardingPaywall}
-      defaultPlan="ANNUAL"
-      onboardingPrompt
-      onClose={() => setShowOnboardingPaywall(false)}
-      onSuccess={() => setShowOnboardingPaywall(false)}
-    />
-    </>
   );
 }
 

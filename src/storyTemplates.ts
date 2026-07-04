@@ -106,6 +106,12 @@ const AI_THEMES = [
   },
 ];
 
+const COMPANION_NICKNAMES = [
+  '阿俊', '老陈', '想回家的人', '重新开始', '一步一步来', '为了孩子戒', '不再翻本',
+  '江边慢跑', '早睡的老王', '戒赌的阿明', '守住这个月', '阿强', '换条路回家', '老周',
+  '每天进步一点', '小林', '撑过今晚',
+];
+
 function hashDate(dateKey: string) {
   let value = 0;
   for (let i = 0; i < dateKey.length; i += 1) value = (value * 31 + dateKey.charCodeAt(i)) % 9973;
@@ -115,10 +121,11 @@ function hashDate(dateKey: string) {
 export function getDailyAiCompanionStories(dateKey = getTodayString(), count = 3): CompanionStory[] {
   const start = hashDate(dateKey) % AI_THEMES.length;
   return Array.from({ length: Math.min(count, AI_THEMES.length) }, (_, index) => {
-    const theme = AI_THEMES[(start + index * 2) % AI_THEMES.length];
+    const themeIndex = (start + index * 2) % AI_THEMES.length;
+    const theme = AI_THEMES[themeIndex];
     return {
       id: 'ai-' + dateKey + '-' + theme.id,
-      displayName: 'AI 陪伴故事',
+      displayName: COMPANION_NICKNAMES[themeIndex % COMPANION_NICKNAMES.length],
       displayMode: 'ai',
       gamblingType: 'casino',
       title: theme.title,

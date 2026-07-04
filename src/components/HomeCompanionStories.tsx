@@ -1,5 +1,5 @@
 import { useAuth } from '@/auth';
-import { isCommunityConfigured, listHomeCompanionStories, PublicStory } from '@/community';
+import { listHomeCompanionStories, PublicStory } from '@/community';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -19,7 +19,7 @@ export default function HomeCompanionStories() {
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>今天也有人在坚持</Text>
-          <Text style={styles.sub}>{isCommunityConfigured() ? '真人故事审核通过后才会出现在这里。' : '配置 Supabase 后会显示真实用户故事；现在先显示 AI 陪伴故事。'}</Text>
+          <Text style={styles.sub}>看看别人怎么撑过最难的时刻。</Text>
         </View>
         <TouchableOpacity onPress={() => router.push('/hope')}><Text style={styles.more}>查看更多</Text></TouchableOpacity>
       </View>

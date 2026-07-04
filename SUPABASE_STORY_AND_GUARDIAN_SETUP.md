@@ -12,7 +12,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL=https://your-project-ref.functions.supabase.co
 ```
 
-Without these values, the app will not pretend cross-user stories are live. It will show AI companion stories only and explain that Supabase is not configured.
+Without these values, the app will not pretend cross-user stories are live. It will show only the built-in seed companion stories and explain that Supabase is not configured.
 
 For local admin testing only, you may set:
 
@@ -125,5 +125,5 @@ Not shared:
 - Story drafts must be submitted manually.
 - User stories are `pending` until admin approval.
 - Only `approved` stories appear on the home page or story wall.
-- AI companion stories are always labeled `AI 陪伴故事`.
+- Seed companion stories are pre-written templates shipped inside the app and shown under fixed pseudonyms (internally `source = 'ai'`); they never come from the database, and reactions/reports on them are handled locally without server writes.
 - No free comments, private messages, group chat, ranking, or gambling tips.
