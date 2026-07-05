@@ -103,6 +103,19 @@ async function bindRevenueCatUser(userId: string) {
   }
 }
 
+// Offline fallback: the last locally cached AppUser, but only if it is this exact user id (so we
+// never leak one account's profile onto another).
+async function readCachedUser(userId: string): Promise<AppUser | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CURRENT_USER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AppUser;
+    return parsed?.id === userId ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 async function hydrateUser(sessionUser: SupabaseUser): Promise<AppUser> {
   const email = sessionUser.email || undefined;
   const mode = modeFromSession(sessionUser);
@@ -110,14 +123,17 @@ async function hydrateUser(sessionUser: SupabaseUser): Promise<AppUser> {
   try {
     profile = await cloudGetProfile(sessionUser.id);
   } catch {
-    // offline / first run — fall back to defaults, profile will hydrate on next launch
+    // offline / first run — fall back below to the last cached profile for this same user.
   }
+  // When the cloud is unreachable, reuse the last known local values so a user who already finished
+  // onboarding isn't forced back through the funnel / paywall on an offline relaunch.
+  const cached = profile ? null : await readCachedUser(sessionUser.id);
   return {
     id: sessionUser.id,
     email,
-    displayName: profile?.display_name || fallbackName(mode, email),
-    avatarUri: profile?.avatar_uri || undefined,
-    profileComplete: !!profile?.profile_complete,
+    displayName: profile?.display_name || cached?.displayName || fallbackName(mode, email),
+    avatarUri: profile?.avatar_uri || cached?.avatarUri || undefined,
+    profileComplete: profile ? !!profile.profile_complete : !!cached?.profileComplete,
     role: isAdminEmail(email) ? 'admin' : 'user',
     mode,
     createdAt: sessionUser.created_at || new Date().toISOString(),

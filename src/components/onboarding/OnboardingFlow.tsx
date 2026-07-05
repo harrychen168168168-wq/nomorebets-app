@@ -56,18 +56,24 @@ export default function OnboardingFlow() {
       if (p.whyQuit) await saveData('whyQuit', p.whyQuit);
       if (p.birthday) await saveData('birthday', p.birthday);
     }
-    // Quiz → money baseline (省钱计数器) + auto-enable payday reminder if it's a trigger.
+    // Quiz → money baseline (省钱计数器).
     await setBaselineMonthlySpend(monthlyLossFromAnswer(finalAnswers));
-    const triggers = Array.isArray(finalAnswers.triggers) ? (finalAnswers.triggers as string[]) : [];
-    if (triggers.includes('payday')) {
-      const settings = await getReminderSettings();
-      await setReminderSettings({ ...settings, paydayEnabled: true });
-    }
     await saveData('quizAnswers', JSON.stringify(finalAnswers));
     // Name/avatar now (but not profileComplete — see comment above).
     if (p) await updateProfile({ displayName: p.name, avatarUri: p.avatarUri });
-    await ensurePermission();
-    await syncReminders();
+    // Reminders are a best-effort side effect — a permission/scheduling error must never abort the
+    // funnel (it would strand the user on the commitment screen right before the paywall).
+    try {
+      const triggers = Array.isArray(finalAnswers.triggers) ? (finalAnswers.triggers as string[]) : [];
+      if (triggers.includes('payday')) {
+        const settings = await getReminderSettings();
+        await setReminderSettings({ ...settings, paydayEnabled: true });
+      }
+      await ensurePermission();
+      await syncReminders();
+    } catch (error) {
+      console.warn('[onboarding] reminder setup skipped:', error);
+    }
   }
 
   async function completeOnboarding() {
@@ -97,8 +103,13 @@ export default function OnboardingFlow() {
           name={name}
           motivation={motivation}
           onComplete={async () => {
-            await finalizeBeforePaywall(answers);
-            setStep(STEP.PAYWALL);
+            // finally: a failure while persisting must still advance to the paywall, otherwise the
+            // commitment button locks (done.current) and the user is stranded for the session.
+            try {
+              await finalizeBeforePaywall(answers);
+            } finally {
+              setStep(STEP.PAYWALL);
+            }
           }}
         />
       );

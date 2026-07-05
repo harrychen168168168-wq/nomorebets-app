@@ -22,10 +22,12 @@ const MILESTONES = [
   { days: 365, emoji: '👑', title: '第 365 天', desc: '你已经证明自己可以重新掌控人生。' },
 ];
 
+// Editorial example stories seeded by the developer (composite scenarios, not real users). The
+// '示例故事' source renders as a visible badge so they are never mistaken for real user content.
 const SYSTEM_STORIES = [
-  { id: 'system-david', name: '阿国', source: '', preview: '我在赌场停车场坐了两个小时，最后没有进去。', full: '那天我本来准备把最后一点钱拿去翻本。坐在车里时，我看到孩子发来的消息：爸爸你几点回家？我突然明白，我真正想赢回来的不是钱，是家。那天我没有进去。后来我每天只做一件事：今天不赌。现在已经一年多了。' },
-  { id: 'system-jenny', name: '重新来过', source: '', preview: '我欠了很多信用卡债，但我终于开始面对。', full: '最难的不是还钱，是承认自己需要改变。我把每一次冲动写下来，把工资先转到安全账户。两年后，我还清了债。那是我这辈子最勇敢的事。' },
-  { id: 'system-michael', name: '老麦', source: '', preview: '我赌了二十年，以为自己戒不了。', full: '后来我不再对自己说“永远不赌”，我只问自己：今天不去可以吗？今天是第二年第四个月。答案还是可以。' },
+  { id: 'system-david', name: '阿国', source: '示例故事', preview: '我在赌场停车场坐了两个小时，最后没有进去。', full: '那天我本来准备把最后一点钱拿去翻本。坐在车里时，我看到孩子发来的消息：爸爸你几点回家？我突然明白，我真正想赢回来的不是钱，是家。那天我没有进去。后来我每天只做一件事：今天不赌。现在已经一年多了。' },
+  { id: 'system-jenny', name: '重新来过', source: '示例故事', preview: '我欠了很多信用卡债，但我终于开始面对。', full: '最难的不是还钱，是承认自己需要改变。我把每一次冲动写下来，把工资先转到安全账户。两年后，我还清了债。那是我这辈子最勇敢的事。' },
+  { id: 'system-michael', name: '老麦', source: '示例故事', preview: '我赌了二十年，以为自己戒不了。', full: '后来我不再对自己说“永远不赌”，我只问自己：今天不去可以吗？今天是第二年第四个月。答案还是可以。' },
 ];
 
 type UserStory = {

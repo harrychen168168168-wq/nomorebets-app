@@ -1,5 +1,5 @@
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 
 // Custom animated splash: green halo grows in → sprout springs in → wordmark slides up →
@@ -23,6 +23,7 @@ export default function AnimatedSplash({ onDone }: { onDone: () => void }) {
   const dot1 = useRef(new Animated.Value(0.25)).current;
   const dot2 = useRef(new Animated.Value(0.25)).current;
   const dot3 = useRef(new Animated.Value(0.25)).current;
+  const [passThrough, setPassThrough] = useState(false);
 
   useEffect(() => {
     // Hand off from the native splash to this one (same background → seamless).
@@ -32,7 +33,7 @@ export default function AnimatedSplash({ onDone }: { onDone: () => void }) {
       Animated.stagger(170, [makeDotPulse(dot1), makeDotPulse(dot2), makeDotPulse(dot3)])
     );
 
-    const sequence = Animated.sequence([
+    const intro = Animated.sequence([
       Animated.parallel([
         Animated.timing(halo, { toValue: 1, duration: 750, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
         Animated.spring(logoScale, { toValue: 1, friction: 6, tension: 55, useNativeDriver: true }),
@@ -44,18 +45,25 @@ export default function AnimatedSplash({ onDone }: { onDone: () => void }) {
       ]),
       Animated.timing(taglineOpacity, { toValue: 1, duration: 460, useNativeDriver: true }),
       Animated.delay(750),
-      Animated.timing(root, { toValue: 0, duration: 480, easing: Easing.in(Easing.cubic), useNativeDriver: true }),
     ]);
 
+    const fade = Animated.timing(root, { toValue: 0, duration: 480, easing: Easing.in(Easing.cubic), useNativeDriver: true });
+
     dotLoop.start();
-    sequence.start(({ finished }) => {
-      dotLoop.stop();
-      if (finished) onDone();
+    intro.start(({ finished }) => {
+      if (!finished) return;
+      // The app underneath is being revealed by the fade — stop the overlay from swallowing its touches.
+      setPassThrough(true);
+      fade.start(({ finished: fadeDone }) => {
+        dotLoop.stop();
+        if (fadeDone) onDone();
+      });
     });
 
     return () => {
       dotLoop.stop();
-      sequence.stop();
+      intro.stop();
+      fade.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -63,7 +71,7 @@ export default function AnimatedSplash({ onDone }: { onDone: () => void }) {
   const haloScale = halo.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] });
 
   return (
-    <Animated.View style={[styles.root, { opacity: root }]}>
+    <Animated.View pointerEvents={passThrough ? 'none' : 'auto'} style={[styles.root, { opacity: root }]}>
       <View style={styles.center}>
         <Animated.View style={[styles.halo, { opacity: halo, transform: [{ scale: haloScale }] }]} />
         <Animated.Text style={[styles.logo, { opacity: logoOpacity, transform: [{ scale: logoScale }] }]}>🌱</Animated.Text>

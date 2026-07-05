@@ -5,7 +5,7 @@ import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
 import { AI_PROXY_URL } from '@/config';
 import { getSubscriptionSnapshot } from '@/subscription';
-import { DailyRecord, deleteDailyRecord, getTodayString, loadMoneyState, readDailyRecords, upsertDailyRecord } from '@/storage';
+import { DailyRecord, deleteDailyRecord, getTodayString, loadData, loadMoneyState, readDailyRecords, saveData, upsertDailyRecord } from '@/storage';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -121,11 +121,16 @@ export default function RecordsPage() {
     setActiveTab('review');
     // Keep linked guardians' view fresh right after a record is saved.
     if (user) pushMyGuardianStatus(user.id).catch(() => {});
-    // Re-conversion: a just-recorded relapse is the second-hottest moment (non-Pro only).
+    // Re-conversion: a just-recorded relapse is the second-hottest moment (non-Pro only, capped at
+    // once per calendar month so editing/re-saving the same slip doesn't re-pop the paywall).
     if (form.gambled && !isPro) {
-      const money = await loadMoneyState();
-      setReconvertLoss(money.baselineMonthlySpend);
-      setShowReconvert(true);
+      const monthKey = 'reconv_relapse_' + getTodayString().slice(0, 7);
+      if (!(await loadData(monthKey))) {
+        await saveData(monthKey, '1');
+        const money = await loadMoneyState();
+        setReconvertLoss(money.baselineMonthlySpend);
+        setShowReconvert(true);
+      }
     }
   }
 

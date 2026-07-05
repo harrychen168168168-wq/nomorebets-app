@@ -18,12 +18,13 @@ Demo account for review:
 Admin mode: the admin entry appears only for the developer's own configured admin email and additionally requires a local PIN. It is an operator-only screen showing aggregate stats and moderation status; it does not expose private user diary content, contact phone numbers, future letters, or other sensitive recovery records. It is not needed for review.
 
 ## Subscription
-The app uses RevenueCat for subscription status and App Store auto-renewable subscriptions. All plans include a 7-day free trial configured in App Store Connect. The paywall includes Restore Purchases, Manage Subscription, Privacy Policy, and Terms links, plus clear Apple auto-renewal wording.
+The app uses RevenueCat for subscription status and App Store auto-renewable subscriptions, plus a one-time non-consumable "lifetime" unlock. The auto-renewable subscription plans include a 7-day free trial configured in App Store Connect; the lifetime plan is a one-time purchase with no trial. The paywall includes Restore Purchases, Manage Subscription, Privacy Policy, and Terms links, plus clear Apple auto-renewal wording.
 
 Plans:
-- Personal plan (monthly): com.nomorebets.app.monthly
-- Family guardian plan (yearly): com.nomorebets.app.yearly
-- Mutual guardian plan (yearly): com.nomorebets.app.mutual_yearly
+- Personal plan (monthly, auto-renewable): com.nomorebets.app.monthly
+- Family guardian plan (yearly, auto-renewable): com.nomorebets.app.yearly
+- Mutual guardian plan (yearly, auto-renewable): com.nomorebets.app.mutual_yearly
+- Lifetime plan (one-time, non-consumable, no trial): com.nomorebets.app.lifetime
 - AI credit pack (consumable): nomorebets_ai_addon_999
 
 RevenueCat entitlement configured in the app:

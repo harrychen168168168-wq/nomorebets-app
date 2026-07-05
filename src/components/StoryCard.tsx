@@ -69,7 +69,7 @@ export default function StoryCard({ story, userId, compact = false }: Props) {
 
   return (
     <View style={[styles.card, compact && styles.compactCard]}>
-      <Text style={styles.meta}>{story.displayName} · {gamblingTypeLabel(story.gamblingType)}</Text>
+      <Text style={styles.meta}>{story.displayName} · {gamblingTypeLabel(story.gamblingType)}{isAi ? ' · 示例' : ''}</Text>
       <Text style={styles.title}>{story.title}</Text>
       <Text style={styles.body}>{expanded || compact ? story.body : story.excerpt}</Text>
       {!compact && story.body.length > story.excerpt.length ? (

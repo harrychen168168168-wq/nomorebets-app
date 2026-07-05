@@ -52,9 +52,9 @@ export default function ProfilePage() {
   const isAnnualPro = subscription?.planType === 'annual';
   const isMutualPro = subscription?.planType === 'mutual';
   const isLifetime = subscription?.planType === 'lifetime';
-  // Freemium: all local tools (contacts/goals/photos) are free for everyone to maximize retention.
-  // Monetization comes from AI 冲动倾诉 and the guardian feature, which are gated separately
-  // (emergency.tsx for AI, GuardianSharingPanel for invites).
+  // Freemium gates: free users get 1 contact + 1 goal and no contact photos; Pro unlocks unlimited
+  // contacts/goals plus photos. AI 冲动倾诉 and guardian invites are gated separately (emergency.tsx
+  // for AI, GuardianSharingPanel for invites).
 
   useEffect(() => {
     setProfileName(user?.displayName || '');
@@ -93,7 +93,7 @@ export default function ProfilePage() {
       const customerInfo = await Purchases.restorePurchases();
       const snapshot = customerInfoToSnapshot(customerInfo);
       setSubscription(snapshot);
-      if (snapshot.isPro) Alert.alert('恢复成功', snapshot.planType === 'mutual' ? '互相守护版已激活。' : snapshot.planType === 'annual' ? '家庭守护版已激活。' : '个人自救版已激活。');
+      if (snapshot.isPro) Alert.alert('恢复成功', snapshot.planType === 'mutual' ? '互相守护版已激活。' : snapshot.planType === 'annual' ? '家庭守护版已激活。' : snapshot.planType === 'lifetime' ? '终身会员已激活。' : '个人自救版已激活。');
       else Alert.alert('没有找到有效订阅', '请确认当前 Apple ID 是否购买过该订阅。');
     } catch (error) {
       Alert.alert('恢复失败', getFriendlyPurchaseError(error));
@@ -306,7 +306,7 @@ export default function ProfilePage() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>重要的人</Text>
-          <Text style={styles.cardSub}>危急时刻，他们是你最重要的力量。可以添加多位联系人和照片。</Text>
+          <Text style={styles.cardSub}>危急时刻，他们是你最重要的力量。{isPro ? '可以添加多位联系人并附照片。' : '免费版可添加 1 位联系人；升级会员可添加多位并附照片。'}</Text>
           {contacts.map((c, i) => (
             <View key={c.name + i} style={styles.contactRow}>
               {c.photo ? <Image source={{ uri: c.photo }} style={styles.contactPhoto} /> : <View style={styles.contactPhotoPlaceholder}><Text style={{ fontSize: 20 }}>👤</Text></View>}
@@ -328,7 +328,7 @@ export default function ProfilePage() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>我的目标</Text>
-          <Text style={styles.cardSub}>把节省下来的钱用在真正重要的事上。可以添加多个目标。</Text>
+          <Text style={styles.cardSub}>把节省下来的钱用在真正重要的事上。{isPro ? '可以添加多个目标。' : '免费版可添加 1 个目标；升级会员可添加多个。'}</Text>
           {goals.map((g, i) => {
             const progress = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
             return (
