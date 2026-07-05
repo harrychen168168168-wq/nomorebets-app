@@ -1,4 +1,5 @@
 import LoginScreen from '@/app/login';
+import AnimatedSplash from '@/components/AnimatedSplash';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import { AuthProvider, useAuth } from '@/auth';
 import { supabaseInitError } from '@/supabase';
@@ -6,9 +7,15 @@ import { SUPPORT_EMAIL } from '@/config';
 import { configureRevenueCat } from '@/subscription';
 import { syncReminders } from '@/notifications';
 import * as Notifications from 'expo-notifications';
+import * as SplashScreen from 'expo-splash-screen';
 import { Tabs } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, Text, View } from 'react-native';
+
+// Keep the native splash up until our animated splash takes over; safety-hide after 4s so a
+// failure to mount the animated splash can never leave the app stuck on the native splash.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+setTimeout(() => { SplashScreen.hideAsync().catch(() => {}); }, 4000);
 
 // Foreground presentation for our local high-risk-time reminders (banner + sound, no badge).
 try {
@@ -88,13 +95,19 @@ function AppShell() {
 }
 
 export default function Layout() {
+  const [splashDone, setSplashDone] = useState(false);
+
   useEffect(() => {
     configureRevenueCat();
+    // Safety net: never keep the animated splash up longer than ~5s.
+    const timer = setTimeout(() => setSplashDone(true), 5000);
+    return () => clearTimeout(timer);
   }, []);
 
   return (
     <AuthProvider>
       <AppShell />
+      {!splashDone ? <AnimatedSplash onDone={() => setSplashDone(true)} /> : null}
     </AuthProvider>
   );
 }
