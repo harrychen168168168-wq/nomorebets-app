@@ -193,10 +193,6 @@ export default function ProfilePage() {
     Linking.openURL('tel:' + number);
   }
 
-  function openSubscriptionManagement() {
-    Linking.openURL(subscription?.managementURL || 'https://apps.apple.com/account/subscriptions');
-  }
-
   function formatAccountSub() {
     if (user?.mode === 'guest') return '访客模式 · 本机保存';
     if (user?.mode === 'apple') return user.email ? 'Apple 登录 · ' + user.email : 'Apple 登录';
@@ -278,7 +274,6 @@ export default function ProfilePage() {
             {!isPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => setShowPaywall(true)}><Text style={styles.subscriptionPrimaryText}>查看会员方案</Text></TouchableOpacity>}
             {isMonthlyPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => setShowPaywall(true)}><Text style={styles.subscriptionPrimaryText}>升级家庭守护版</Text></TouchableOpacity>}
             <TouchableOpacity style={styles.subscriptionSecondary} onPress={handleRestorePurchase} disabled={restoreLoading}>{restoreLoading ? <ActivityIndicator color="#2E7D32" /> : <Text style={styles.subscriptionSecondaryText}>恢复购买</Text>}</TouchableOpacity>
-            <TouchableOpacity style={styles.subscriptionSecondary} onPress={openSubscriptionManagement}><Text style={styles.subscriptionSecondaryText}>管理订阅</Text></TouchableOpacity>
           </View>
         </View>
 

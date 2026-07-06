@@ -18,6 +18,11 @@ type PlanType = 'ANNUAL' | 'MONTHLY' | 'MUTUAL' | 'LIFETIME';
 
 const MUTUAL_KEYWORDS = ['mutual', 'couple', 'partner', 'duo', 'pair'];
 
+// Honest launch-price urgency for the lifetime card. Set this to the price the buyout will rise to
+// (e.g. '$149.99') ONLY after you have actually scheduled that increase in App Store Connect —
+// otherwise the "即将恢复 …" line would be a false claim. Empty string hides the urgency line + badge.
+const LIFETIME_REGULAR_PRICE = '';
+
 function isMutualProduct(productId: string) {
   const id = productId.toLowerCase();
   return MUTUAL_PRODUCT_IDS.some((x) => x.toLowerCase() === id) || MUTUAL_KEYWORDS.some((keyword) => id.includes(keyword));
@@ -110,6 +115,11 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
   // Lifetime vs annual: how many years of subscription the one-time buyout price equals.
   const lifetimeYears = lifetime && annual && annual.product.price > 0
     ? Math.round((lifetime.product.price / annual.product.price) * 10) / 10
+    : 0;
+  // How many days of the user's own gambling loss the one-time buyout equals — the sharpest hook for
+  // a gambling app (a heavy loser's lifetime unlock can cost less than a single day of bets).
+  const lifetimeLossDays = lifetime && monthlyLoss > 0
+    ? Math.max(1, Math.round(lifetime.product.price / (monthlyLoss / 30)))
     : 0;
 
   function finishWithSnapshot(customerInfo: any) {
@@ -204,13 +214,19 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                   <TouchableOpacity style={[styles.lifetimeCard, selected === 'LIFETIME' && styles.lifetimeCardSelected]} onPress={() => setSelected('LIFETIME')} disabled={purchasing}>
                     <View style={styles.planTopRow}>
                       <Text style={styles.lifetimeName}>终身会员 · 一次买断</Text>
-                      <View style={styles.badgeGold}><Text style={styles.badgeText}>🔥 最超值</Text></View>
+                      <View style={styles.badgeGold}><Text style={styles.badgeText}>{LIFETIME_REGULAR_PRICE ? '🔥 限时上线价' : '🔥 最超值'}</Text></View>
                     </View>
                     <View style={styles.priceRow}>
+                      {LIFETIME_REGULAR_PRICE ? <Text style={styles.lifetimeWas}>{LIFETIME_REGULAR_PRICE}</Text> : null}
                       <Text style={styles.lifetimePrice}>{lifetime.product.priceString}</Text>
                       <Text style={styles.lifetimeOnce}>一次付清 · 永久拥有</Text>
                     </View>
-                    {lifetimeYears > 0 ? (
+                    {lifetimeLossDays > 0 ? (
+                      <Text style={styles.lifetimeLoss}>≈ 你 {lifetimeLossDays} 天输掉的钱，换一辈子不再碰赌。</Text>
+                    ) : null}
+                    {LIFETIME_REGULAR_PRICE ? (
+                      <Text style={styles.lifetimeUrgent}>上线优惠价，之后恢复 {LIFETIME_REGULAR_PRICE}。现在买断，永久锁定。</Text>
+                    ) : lifetimeYears > 0 ? (
                       <Text style={styles.lifetimeCompare}>≈ {lifetimeYears} 年的订阅费，之后永远免费。订满两年，买断更划算。</Text>
                     ) : null}
                     <View style={styles.lifetimeBenefits}>
@@ -340,6 +356,9 @@ const styles = StyleSheet.create({
   lifetimePrice: { fontSize: 26, fontWeight: 'bold', color: '#E67E22' },
   lifetimeOnce: { fontSize: 13, color: '#B85C00', fontWeight: 'bold' },
   lifetimeCompare: { fontSize: 12, color: '#9A6A00', marginTop: 4, fontWeight: 'bold' },
+  lifetimeWas: { fontSize: 16, color: '#B08968', textDecorationLine: 'line-through', fontWeight: 'bold' },
+  lifetimeLoss: { fontSize: 13, color: '#B85C00', fontWeight: 'bold', marginTop: 6, lineHeight: 19 },
+  lifetimeUrgent: { fontSize: 12, color: '#C0392B', fontWeight: 'bold', marginTop: 4, lineHeight: 17 },
   lifetimeBenefits: { backgroundColor: 'rgba(230,126,34,0.08)', borderRadius: 10, padding: 10, marginTop: 10 },
   lifetimeBenefitStrong: { fontSize: 13, color: '#B85C00', fontWeight: 'bold', marginBottom: 4, lineHeight: 18 },
   lifetimeBenefit: { fontSize: 12, color: '#6F5A28', lineHeight: 18 },
