@@ -1,4 +1,5 @@
-import { ADMIN_FUNCTION_SECRET_FOR_LOCAL_TESTS, SUPABASE_ANON_KEY, SUPABASE_FUNCTIONS_URL, SUPABASE_URL } from './config';
+import { SUPABASE_ANON_KEY, SUPABASE_FUNCTIONS_URL, SUPABASE_URL } from './config';
+import { supabase as supabaseAuth } from './supabase';
 import { calculateStats, DailyRecord, getTodayString } from './storage';
 import { CompanionStory, GamblingType, getDailyAiCompanionStories } from './storyTemplates';
 
@@ -116,7 +117,13 @@ async function callFunction(name: string, body: Record<string, unknown>, admin =
     Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
     'Content-Type': 'application/json',
   };
-  if (admin && ADMIN_FUNCTION_SECRET_FOR_LOCAL_TESTS) headers['x-admin-secret'] = ADMIN_FUNCTION_SECRET_FOR_LOCAL_TESTS;
+  // Admin calls identify the caller by their real login token (not a baked-in secret): the server
+  // verifies this JWT and checks the email against its ADMIN_EMAILS allowlist.
+  if (admin) {
+    const token = (await supabaseAuth?.auth.getSession())?.data?.session?.access_token;
+    if (!token) throw new Error('请用管理员账号重新登录后再操作。');
+    headers.Authorization = 'Bearer ' + token;
+  }
   const response = await fetch(base + '/' + name, { method: 'POST', headers, body: JSON.stringify(body) });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error || data?.message || '后端函数请求失败。');

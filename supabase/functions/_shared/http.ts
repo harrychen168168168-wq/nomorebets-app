@@ -20,11 +20,29 @@ function env(name: string) {
   return Deno.env.get(name) || '';
 }
 
-export function requireAdmin(req: Request) {
-  const secret = env('ADMIN_API_SECRET');
-  if (!secret) return { ok: false, status: 500, error: 'missing_admin_secret' };
-  if (req.headers.get('x-admin-secret') !== secret) return { ok: false, status: 401, error: 'unauthorized_admin' };
-  return { ok: true, status: 200, error: '' };
+// Verify the caller's Supabase login token and confirm their email is on the ADMIN_EMAILS allowlist.
+// No shared secret is baked into the app — the admin just uses their normal login; the master key
+// never leaves the server.
+export async function requireAdmin(req: Request) {
+  const token = (req.headers.get('Authorization') || '').replace(/^[Bb]earer\s+/, '');
+  if (!token) return { ok: false, status: 401, error: 'unauthorized_admin', email: '', userId: '' };
+  let email = '';
+  let userId = '';
+  try {
+    const res = await fetch(env('SUPABASE_URL').replace(/\/$/, '') + '/auth/v1/user', {
+      headers: { Authorization: 'Bearer ' + token, apikey: env('SUPABASE_ANON_KEY') },
+    });
+    if (!res.ok) return { ok: false, status: 401, error: 'unauthorized_admin', email: '', userId: '' };
+    const user = await res.json();
+    email = String(user?.email || '').trim().toLowerCase();
+    userId = String(user?.id || '');
+  } catch {
+    return { ok: false, status: 401, error: 'unauthorized_admin', email: '', userId: '' };
+  }
+  const allow = env('ADMIN_EMAILS').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+  if (!allow.length) return { ok: false, status: 500, error: 'missing_admin_allowlist', email, userId };
+  if (!email || !allow.includes(email)) return { ok: false, status: 403, error: 'forbidden_admin', email, userId };
+  return { ok: true, status: 200, error: '', email, userId };
 }
 
 export function requireWebhookSecret(req: Request) {

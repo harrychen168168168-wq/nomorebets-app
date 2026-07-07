@@ -5,7 +5,8 @@ export const REVENUECAT_ENTITLEMENT_ID = 'NO MORE BETS Pro';
 export const MONTHLY_PRODUCT_IDS = ['com.nomorebets.app.monthly'];
 export const ANNUAL_PRODUCT_IDS = ['com.nomorebets.app.yearly'];
 export const MUTUAL_PRODUCT_IDS = ['com.nomorebets.app.mutual_yearly'];
-export const LIFETIME_PRODUCT_IDS = ['com.nomorebets.app.lifetime']; // 非消耗型买断（待 ASC 建 SKU）
+export const LIFETIME_PRODUCT_IDS = ['com.nomorebets.app.lifetime']; // 非消耗型买断 · 正常价 $99.99
+export const LIFETIME_LAUNCH_PRODUCT_IDS = ['com.nomorebets.app.lifetime_launch']; // 上线促销买断 $79.99（倒计时内显示）
 
 export const ADMIN_EMAILS = ['harrychen168168168@gmail.com'];
 export const ADMIN_LOCAL_PIN = '168168';
@@ -37,4 +38,3 @@ export const SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlicW11a3J4dGxpbXN1dm5mcnVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MTM4MjksImV4cCI6MjA5Nzk4OTgyOX0.Awh6C0O4D8Peb8QfXYrS4rzzIWW0w-qeOChnvHV8n2M';
 export const SUPABASE_FUNCTIONS_URL =
   readEnv('EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL') || 'https://ibqmukrxtlimsuvnfrud.functions.supabase.co';
-export const ADMIN_FUNCTION_SECRET_FOR_LOCAL_TESTS = readEnv('EXPO_PUBLIC_ADMIN_FUNCTION_SECRET_FOR_LOCAL_TESTS');

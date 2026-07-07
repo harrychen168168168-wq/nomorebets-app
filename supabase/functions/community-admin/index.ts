@@ -4,13 +4,14 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
 
-  const admin = requireAdmin(req);
+  const admin = await requireAdmin(req);
   if (!admin.ok) return json({ error: admin.error }, admin.status);
 
   try {
     const body = await readJson(req);
     const action = String(body.action || '');
-    const adminUserId = String(body.adminUserId || 'admin');
+    // Trust the server-verified admin identity, not whatever the client claims.
+    const adminUserId = admin.userId || String(body.adminUserId || 'admin');
 
     if (action === 'listPendingStories') {
       const rows = await rest('public_stories?select=*&status=eq.pending&order=created_at.asc&limit=100');

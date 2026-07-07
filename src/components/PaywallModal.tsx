@@ -1,4 +1,5 @@
-import { ANNUAL_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
+import { ANNUAL_PRODUCT_IDS, LIFETIME_LAUNCH_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
+import { loadData, saveData } from '@/storage';
 import { configureRevenueCat, customerInfoToSnapshot, getFriendlyPurchaseError } from '@/subscription';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -18,10 +19,10 @@ type PlanType = 'ANNUAL' | 'MONTHLY' | 'MUTUAL' | 'LIFETIME';
 
 const MUTUAL_KEYWORDS = ['mutual', 'couple', 'partner', 'duo', 'pair'];
 
-// Honest launch-price urgency for the lifetime card. Set this to the price the buyout will rise to
-// (e.g. '$149.99') ONLY after you have actually scheduled that increase in App Store Connect —
-// otherwise the "即将恢复 …" line would be a false claim. Empty string hides the urgency line + badge.
-const LIFETIME_REGULAR_PRICE = '';
+// First-session launch offer: a real, cheaper buyout product (LIFETIME_LAUNCH_PRODUCT_IDS, e.g.
+// $79.99) is shown with a persisted countdown; when it expires the regular buyout
+// (LIFETIME_PRODUCT_IDS, e.g. $99.99) is shown instead. Two REAL products — never a fake price on one.
+const PROMO_DURATION_MS = 5 * 60 * 1000;
 
 function isMutualProduct(productId: string) {
   const id = productId.toLowerCase();
@@ -66,10 +67,38 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [promoDeadline, setPromoDeadline] = useState<number | null>(null);
+  const [nowTs, setNowTs] = useState(Date.now());
 
   useEffect(() => {
     if (visible) loadOfferings();
   }, [visible]);
+
+  // Persisted per-user launch countdown: starts the first time the paywall is opened and genuinely
+  // expires (the deadline is saved), so "限时" is real — after it, the buyout shows the regular price.
+  useEffect(() => {
+    if (!visible) return;
+    let active = true;
+    (async () => {
+      try {
+        let deadline = Number(await loadData('paywallPromoDeadline')) || 0;
+        if (!deadline) {
+          deadline = Date.now() + PROMO_DURATION_MS;
+          await saveData('paywallPromoDeadline', String(deadline));
+        }
+        if (active) { setPromoDeadline(deadline); setNowTs(Date.now()); }
+      } catch {
+        // storage unavailable — just skip the promo
+      }
+    })();
+    return () => { active = false; };
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !promoDeadline) return;
+    const timer = setInterval(() => setNowTs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [visible, promoDeadline]);
 
   async function loadOfferings() {
     if (Platform.OS !== 'ios') {
@@ -101,7 +130,18 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
   const annual = useMemo(() => pickPackage(packages, 'ANNUAL'), [packages]);
   const monthly = useMemo(() => pickPackage(packages, 'MONTHLY'), [packages]);
   const mutual = useMemo(() => pickPackage(packages, 'MUTUAL'), [packages]);
-  const lifetime = useMemo(() => pickPackage(packages, 'LIFETIME'), [packages]);
+  const regularLifetime = useMemo(() => pickPackage(packages, 'LIFETIME'), [packages]);
+  const launchLifetime = useMemo(() => {
+    const ids = LIFETIME_LAUNCH_PRODUCT_IDS.map((x) => x.toLowerCase());
+    return packages.find((p) => ids.includes(p.product.identifier.toLowerCase()));
+  }, [packages]);
+  // Countdown: seconds left in the first-session launch offer.
+  const countdownRemaining = promoDeadline ? Math.max(0, Math.ceil((promoDeadline - nowTs) / 1000)) : 0;
+  const countdownText = String(Math.floor(countdownRemaining / 60)).padStart(2, '0') + ':' + String(countdownRemaining % 60).padStart(2, '0');
+  // Promo is on only while the timer is live AND the launch product is really cheaper than the regular.
+  const promoActive = !!launchLifetime && countdownRemaining > 0 && (!regularLifetime || launchLifetime.product.price < regularLifetime.product.price);
+  // The buyout package actually shown/charged: launch price during the countdown, regular price after.
+  const lifetime = promoActive ? launchLifetime : (regularLifetime ?? launchLifetime);
   const selectedPackage = selected === 'MUTUAL' ? mutual : selected === 'LIFETIME' ? lifetime : selected === 'ANNUAL' ? annual : monthly;
   const hasPlans = !!annual || !!monthly || !!mutual || !!lifetime;
   // Real anchor: 12× the monthly price struck through next to the annual price ("save X%").
@@ -188,19 +228,12 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
             {onboardingPrompt ? (
               <View style={styles.recommendCard}>
                 <Text style={styles.recommendTitle}>最省心：一次买断，永久拥有</Text>
-                <Text style={styles.recommendLine}>戒赌是长期的事。一次付清就永久解锁全部功能，不用每年续费、也不怕忘记取消。</Text>
-                <Text style={styles.recommendLine}>还没准备好一次付清？也可以选家庭守护版，先免费体验 7 天。</Text>
+                <Text style={styles.recommendLine}>戒赌是长期的事——一次付清，永久解锁，不用年年续费、也不怕忘记取消。</Text>
               </View>
             ) : null}
 
-            <View style={styles.featuresCard}>
-              <Text style={styles.sectionTitle}>计划区别（都解锁全部功能）</Text>
-              <Text style={styles.featureLine}>终身会员：一次付清，永久解锁全部功能，不再续费（无免费试用）。</Text>
-              <Text style={styles.featureLine}>个人自救版：解锁全部自救功能，含 AI 每月 50 次，适合一个人开始。</Text>
-              <Text style={styles.featureLine}>家庭守护版：全部功能 + 可邀请一位家人守护；AI 每月 100 次为家庭共享额度。</Text>
-              {mutual ? <Text style={styles.featureLine}>互相守护版：全部功能 + 一对一互相守护；双方各自 AI 每月 100 次。</Text> : null}
-              <Text style={styles.featureLine}>邀请权限跟主会员同一天到期，不会比主会员多出额外免费天数。</Text>
-              <Text style={styles.featureLine}>AI 有次数限制，避免滥用和成本失控。</Text>
+            <View style={styles.allAccessStrip}>
+              <Text style={styles.allAccessText}>每个方案都解锁全部功能——区别只在 AI 次数和守护方式。</Text>
             </View>
 
             {loading ? (
@@ -214,24 +247,24 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                   <TouchableOpacity style={[styles.lifetimeCard, selected === 'LIFETIME' && styles.lifetimeCardSelected]} onPress={() => setSelected('LIFETIME')} disabled={purchasing}>
                     <View style={styles.planTopRow}>
                       <Text style={styles.lifetimeName}>终身会员 · 一次买断</Text>
-                      <View style={styles.badgeGold}><Text style={styles.badgeText}>{LIFETIME_REGULAR_PRICE ? '🔥 限时上线价' : '🔥 最超值'}</Text></View>
+                      <View style={styles.badgeGold}><Text style={styles.badgeText}>{promoActive ? '🔥 限时 ' + countdownText : '🔥 最超值'}</Text></View>
                     </View>
                     <View style={styles.priceRow}>
-                      {LIFETIME_REGULAR_PRICE ? <Text style={styles.lifetimeWas}>{LIFETIME_REGULAR_PRICE}</Text> : null}
+                      {promoActive && regularLifetime ? <Text style={styles.lifetimeWas}>{regularLifetime.product.priceString}</Text> : null}
                       <Text style={styles.lifetimePrice}>{lifetime.product.priceString}</Text>
                       <Text style={styles.lifetimeOnce}>一次付清 · 永久拥有</Text>
                     </View>
                     {lifetimeLossDays > 0 ? (
                       <Text style={styles.lifetimeLoss}>≈ 你 {lifetimeLossDays} 天输掉的钱，换一辈子不再碰赌。</Text>
                     ) : null}
-                    {LIFETIME_REGULAR_PRICE ? (
-                      <Text style={styles.lifetimeUrgent}>上线优惠价，之后恢复 {LIFETIME_REGULAR_PRICE}。现在买断，永久锁定。</Text>
+                    {promoActive ? (
+                      <Text style={styles.lifetimeUrgent}>促销价 · 一年订阅的钱直接买断永久 · 仅剩 {countdownText}，结束后恢复{regularLifetime ? ' ' + regularLifetime.product.priceString : ''}。</Text>
                     ) : lifetimeYears > 0 ? (
                       <Text style={styles.lifetimeCompare}>≈ {lifetimeYears} 年的订阅费，之后永远免费。订满两年，买断更划算。</Text>
                     ) : null}
                     <View style={styles.lifetimeBenefits}>
-                      <Text style={styles.lifetimeBenefitStrong}>戒赌是一辈子的事——一次搞定，再不用每年续费、记着取消。</Text>
-                      <Text style={styles.lifetimeBenefit}>永久解锁全部功能：90 天计划、AI 冲动倾诉、周月报告、守护邀请、无限联系人和目标。</Text>
+                      <Text style={styles.lifetimeBenefitStrong}>一次搞定，永久解锁全部功能，不用年年续费、记着取消。</Text>
+                      <Text style={styles.lifetimeBenefit}>90 天计划 · AI 冲动倾诉 · 守护邀请 · 全部无限，一辈子。</Text>
                     </View>
                   </TouchableOpacity>
                 )}
@@ -252,8 +285,8 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                     </View>
                     <Text style={styles.planSub}>{getPlanSubtitle(annual, '7 天免费体验，之后按年自动续订')}{annualLossDays > 0 ? ' · 约等于你 ' + annualLossDays + ' 天的赌博损失' : ''}</Text>
                     <View style={styles.planBenefits}>
-                      <Text style={styles.planBenefitStrong}>一顿饭钱，给身边重要的人一整年的陪伴和守护。</Text>
-                      <Text style={styles.planBenefit}>适合由家人发起守护。把日常记录、紧急联系人、目标提醒和冲动应对放在一起，关键时刻多一个拉住他的入口。</Text>
+                      <Text style={styles.planBenefitStrong}>一顿饭钱，让家人守护你一整年。</Text>
+                      <Text style={styles.planBenefit}>全部功能 + 邀 1 位家人守护 · AI 每月 100 次 · 含 7 天免费</Text>
                     </View>
                   </TouchableOpacity>
                 )}
@@ -263,8 +296,8 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                     <Text style={styles.planPrice}>{monthly.product.priceString} / 月</Text>
                     <Text style={styles.planSub}>{getPlanSubtitle(monthly, '7天免费自救体验后按月自动续订')}</Text>
                     <View style={styles.planBenefits}>
-                      <Text style={styles.planBenefitStrong}>一杯咖啡钱，给自己一个月时间，从赌场冲动里慢慢拉回来。</Text>
-                      <Text style={styles.planBenefit}>适合先建立打卡、记录、紧急联系人和目标提醒，并使用每月 50 次 AI 冲动倾诉，把最难的第一个月撑过去。</Text>
+                      <Text style={styles.planBenefitStrong}>一杯咖啡钱，先撑过最难的第一个月。</Text>
+                      <Text style={styles.planBenefit}>全部功能 + AI 每月 50 次，一个人先开始 · 含 7 天免费</Text>
                     </View>
                   </TouchableOpacity>
                 )}
@@ -278,8 +311,8 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                     <Text style={styles.planPrice}>{mutual.product.priceString} / 年</Text>
                     <Text style={styles.planSub}>{getPlanSubtitle(mutual, '7天免费自救体验后按年自动续订')}</Text>
                     <View style={styles.planBenefits}>
-                      <Text style={styles.planBenefitStrong}>我们相互扶持，一起努力，让生活变得更好。</Text>
-                      <Text style={styles.planBenefit}>适合朋友、伴侣、兄弟姐妹，或任何想一起戒赌的两个人。不是互相责备，而是一起把生活过得更好。</Text>
+                      <Text style={styles.planBenefitStrong}>两个人一起戒，比一个人走得远。</Text>
+                      <Text style={styles.planBenefit}>全部功能 + 一对一互相守护 · 双方各 AI 每月 100 次</Text>
                     </View>
                   </TouchableOpacity>
                 )}
@@ -335,6 +368,8 @@ const styles = StyleSheet.create({
   recommendLine: { fontSize: 13, color: '#6F5A28', lineHeight: 19, marginBottom: 5 },
   recommendWarn: { fontSize: 12, color: '#9A5A00', lineHeight: 18, fontWeight: 'bold' },
   featuresCard: { backgroundColor: '#F8FAF7', borderRadius: 18, padding: 14, marginBottom: 16 },
+  allAccessStrip: { backgroundColor: '#F1F8F1', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 14 },
+  allAccessText: { fontSize: 13, color: '#2E7D32', textAlign: 'center', lineHeight: 18, fontWeight: 'bold' },
   sectionTitle: { fontSize: 15, fontWeight: 'bold', color: '#333', marginBottom: 8 },
   featureLine: { fontSize: 13, color: '#555', lineHeight: 20, marginBottom: 5 },
   loadingBox: { alignItems: 'center', paddingVertical: 24 },

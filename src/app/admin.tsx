@@ -126,9 +126,9 @@ export default function AdminPage() {
     <PageContainer>
       <ScrollView style={styles.container}>
         <View style={styles.header}><Text style={styles.headerTitle}>管理员中心</Text><Text style={styles.headerSub}>当前账号：{user?.email}</Text></View>
-        <View style={styles.noticeCard}><Text style={styles.noticeTitle}>审核安全模式</Text><Text style={styles.noticeText}>公开故事必须先审核，举报需要及时处理。正式上线时，管理员写操作应迁移到 Supabase Edge Function 或服务端权限校验。</Text></View>
+        <View style={styles.noticeCard}><Text style={styles.noticeTitle}>审核安全模式</Text><Text style={styles.noticeText}>公开故事必须先审核，举报需要及时处理。管理员身份由服务端校验你的登录令牌 + 邮箱白名单，App 内不保存任何管理员密钥。</Text></View>
         {!isCommunityConfigured() ? <View style={styles.warnCard}><Text style={styles.warnText}>Supabase 未配置：无法加载跨用户待审核故事和举报。</Text></View> : null}
-        {adminError ? <View style={styles.warnCard}><Text style={styles.warnText}>管理员函数不可用：{adminError}。请确认 community-admin 已部署，并配置 ADMIN_API_SECRET。生产环境不要把真实管理员密钥放进 App。</Text></View> : null}
+        {adminError ? <View style={styles.warnCard}><Text style={styles.warnText}>管理员功能不可用：{adminError}。请用管理员邮箱登录，并确认 community-admin 已部署、Supabase 里 ADMIN_EMAILS 白名单已配置。</Text></View> : null}
 
         <View style={styles.grid}>
           <View style={styles.statCard}><Text style={styles.statValue}>{stats.totalRecords}</Text><Text style={styles.statLabel}>本机记录</Text></View>

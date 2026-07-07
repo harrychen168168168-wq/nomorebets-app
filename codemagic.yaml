@@ -9,8 +9,8 @@ workflows:
 
     environment:
       groups:
-        # Codemagic encrypted group. Add EXPO_PUBLIC_ADMIN_FUNCTION_SECRET_FOR_LOCAL_TESTS here
-        # (Codemagic UI) so the admin secret stays out of git but reaches the build.
+        # Codemagic encrypted group for any EXPO_PUBLIC_* secrets that must reach the build without
+        # living in git. (Admin auth no longer needs a client secret — it uses the admin's login JWT.)
         - nomorebets_secrets
       node: 22
       xcode: latest
