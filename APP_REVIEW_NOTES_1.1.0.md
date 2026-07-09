@@ -12,8 +12,9 @@ The app uses Supabase-backed accounts with three options on the login screen:
 An account is required because the app cloud-syncs the user's private recovery data across devices and supports one-to-one guardian sharing.
 
 Demo account for review:
-- Email: [FILL IN a real test account email created in App Store Connect]
-- Password: [FILL IN the real password]
+- Email: appreview@nezha2capital.com
+- Password: ReviewNMB2026
+- This is a fresh account: after signing in it runs a short onboarding quiz, then shows the paywall. No purchase is required to review the app — tap "暂不订阅，先免费使用" (Not now / continue free) at the bottom of the paywall to enter the app.
 
 Admin mode: the admin entry appears only for the developer's own configured admin email and additionally requires a local PIN. It is an operator-only screen showing aggregate stats and moderation status; it does not expose private user diary content, contact phone numbers, future letters, or other sensitive recovery records. It is not needed for review.
 
