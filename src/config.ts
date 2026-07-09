@@ -22,19 +22,22 @@ export const PRIVACY_POLICY_URL = 'https://nezha2capital.com/privacy';
 export const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 export const SUPPORT_EMAIL = 'nomorebets@nezha2capital.com';
 
-declare const process: { env?: Record<string, string | undefined> };
-
-function readEnv(name: string) {
-  return process?.env?.[name] || '';
-}
+declare const process: {
+  env: {
+    EXPO_PUBLIC_SUPABASE_URL?: string;
+    EXPO_PUBLIC_SUPABASE_ANON_KEY?: string;
+    EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL?: string;
+  };
+};
 
 // These three are PUBLIC client config (the anon key is safe to ship — it only works through RLS).
-// We prefer the EXPO_PUBLIC_* env vars, but hardcode the same public values as a fallback because
-// the Codemagic build does not reliably inline them into the bundle (caused a "Missing SUPABASE_URL"
-// startup failure on TestFlight). Hardcoding guarantees the client is always configured.
-export const SUPABASE_URL = readEnv('EXPO_PUBLIC_SUPABASE_URL') || 'https://ibqmukrxtlimsuvnfrud.supabase.co';
+// EXPO_PUBLIC_* must be read as a STATIC `process.env.NAME` for Metro to inline it into the bundle;
+// a dynamic `process.env[name]` lookup is never replaced (which silently left these empty and made
+// the build depend entirely on the hardcoded fallback). We still keep the same public values as a
+// fallback so a build without the env vars can't hit the "Missing SUPABASE_URL" startup crash.
+export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://ibqmukrxtlimsuvnfrud.supabase.co';
 export const SUPABASE_ANON_KEY =
-  readEnv('EXPO_PUBLIC_SUPABASE_ANON_KEY') ||
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlicW11a3J4dGxpbXN1dm5mcnVkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI0MTM4MjksImV4cCI6MjA5Nzk4OTgyOX0.Awh6C0O4D8Peb8QfXYrS4rzzIWW0w-qeOChnvHV8n2M';
 export const SUPABASE_FUNCTIONS_URL =
-  readEnv('EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL') || 'https://ibqmukrxtlimsuvnfrud.functions.supabase.co';
+  process.env.EXPO_PUBLIC_SUPABASE_FUNCTIONS_URL || 'https://ibqmukrxtlimsuvnfrud.functions.supabase.co';
