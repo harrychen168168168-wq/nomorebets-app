@@ -10,7 +10,7 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Purchases from 'react-native-purchases';
-import { loadData as loadStoredData } from '../storage';
+import { loadData as loadStoredData, saveData } from '../storage';
 
 const MOODS = [
   { emoji: '😰', label: '焦虑' },
@@ -264,7 +264,7 @@ export default function EmergencyPage() {
 
         <View style={styles.card}>
           <Text style={styles.questionTitle}>你现在还要去赌场吗？</Text>
-          <TouchableOpacity style={styles.btnFinalGood} onPress={() => { setModalType('no'); setShowModal(true); }}><Text style={styles.btnFinalGoodText}>我选择不去</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.btnFinalGood} onPress={async () => { setModalType('no'); setShowModal(true); const n = (Number(await loadStoredData('urgesResisted')) || 0) + 1; await saveData('urgesResisted', String(n)); }}><Text style={styles.btnFinalGoodText}>我选择不去</Text></TouchableOpacity>
           <TouchableOpacity style={[styles.btnFinalBad, { marginTop: 12 }]} onPress={() => { setModalType('yes'); setShowModal(true); }}><Text style={styles.btnFinalBadText}>我还是去了</Text></TouchableOpacity>
         </View>
 

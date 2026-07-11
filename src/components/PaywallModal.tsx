@@ -225,15 +225,6 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                   : '选择你的方案，头 7 天免费。'}
             </Text>
 
-            {promoActive && promoDeadline ? (
-              <PromoCountdown
-                deadline={promoDeadline}
-                totalMs={PROMO_DURATION_MS}
-                secondsLeft={countdownRemaining}
-                regularPrice={regularLifetime?.product.priceString}
-              />
-            ) : null}
-
             {onboardingPrompt ? (
               <View style={styles.recommendCard}>
                 <Text style={styles.recommendTitle}>最省心：一次买断，永久拥有</Text>
@@ -253,7 +244,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
             ) : hasPlans ? (
               <View style={styles.plans}>
                 {lifetime && (
-                  <TouchableOpacity style={[styles.lifetimeCard, selected === 'LIFETIME' && styles.lifetimeCardSelected]} onPress={() => setSelected('LIFETIME')} disabled={purchasing}>
+                  <TouchableOpacity style={[styles.lifetimeCard, selected === 'LIFETIME' && styles.lifetimeCardSelected]} onPress={() => { setSelected('LIFETIME'); handlePurchase(lifetime); }} disabled={purchasing}>
                     <View style={styles.planTopRow}>
                       <Text style={styles.lifetimeName}>终身会员 · 一次买断</Text>
                       <View style={styles.badgeGold}><Text style={styles.badgeText}>{promoActive ? '🔥 促销价' : '🔥 最超值'}</Text></View>
@@ -266,22 +257,23 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                     {lifetimeLossDays > 0 ? (
                       <Text style={styles.lifetimeLoss}>≈ 你 {lifetimeLossDays} 天输掉的钱，换一辈子不再碰赌。</Text>
                     ) : null}
-                    {promoActive ? (
-                      <Text style={styles.lifetimeUrgent}>促销价 · 一年订阅的钱直接买断永久，结束后恢复{regularLifetime ? ' ' + regularLifetime.product.priceString : ''}。</Text>
-                    ) : lifetimeYears > 0 ? (
+                    {!promoActive && lifetimeYears > 0 ? (
                       <Text style={styles.lifetimeCompare}>≈ {lifetimeYears} 年的订阅费，之后永远免费。订满两年，买断更划算。</Text>
                     ) : null}
                     <View style={styles.lifetimeBenefits}>
                       <Text style={styles.lifetimeBenefitStrong}>一次搞定，永久解锁全部功能，不用年年续费、记着取消。</Text>
                       <Text style={styles.lifetimeBenefit}>90 天计划 · AI 冲动倾诉 · 守护邀请 · 全部无限，一辈子。</Text>
                     </View>
+                    {promoActive && promoDeadline ? (
+                      <PromoCountdown embedded deadline={promoDeadline} totalMs={PROMO_DURATION_MS} secondsLeft={countdownRemaining} regularPrice={regularLifetime?.product.priceString} />
+                    ) : null}
                   </TouchableOpacity>
                 )}
                 {lifetime && (annual || monthly || mutual) ? (
                   <View style={styles.divider}><View style={styles.dividerLine} /><Text style={styles.dividerText}>或按期订阅</Text><View style={styles.dividerLine} /></View>
                 ) : null}
                 {annual && (
-                  <TouchableOpacity style={[styles.planCard, selected === 'ANNUAL' && styles.planSelected]} onPress={() => setSelected('ANNUAL')} disabled={purchasing}>
+                  <TouchableOpacity style={[styles.planCard, selected === 'ANNUAL' && styles.planSelected]} onPress={() => { setSelected('ANNUAL'); handlePurchase(annual); }} disabled={purchasing}>
                     <View style={styles.planTopRow}>
                       <Text style={styles.planName}>家庭守护版</Text>
                       <View style={styles.badge}><Text style={styles.badgeText}>含 7 天免费</Text></View>
@@ -300,7 +292,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                   </TouchableOpacity>
                 )}
                 {monthly && (
-                  <TouchableOpacity style={[styles.planCard, selected === 'MONTHLY' && styles.planSelected]} onPress={() => setSelected('MONTHLY')} disabled={purchasing}>
+                  <TouchableOpacity style={[styles.planCard, selected === 'MONTHLY' && styles.planSelected]} onPress={() => { setSelected('MONTHLY'); handlePurchase(monthly); }} disabled={purchasing}>
                     <View style={styles.planTopRow}><Text style={styles.planName}>个人自救版</Text></View>
                     <Text style={styles.planPrice}>{monthly.product.priceString} / 月</Text>
                     <Text style={styles.planSub}>{getPlanSubtitle(monthly, '7天免费自救体验后按月自动续订')}</Text>
@@ -313,7 +305,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
 
 
                 {mutual && (
-                  <TouchableOpacity style={[styles.planCard, selected === 'MUTUAL' && styles.planSelected]} onPress={() => setSelected('MUTUAL')} disabled={purchasing}>
+                  <TouchableOpacity style={[styles.planCard, selected === 'MUTUAL' && styles.planSelected]} onPress={() => { setSelected('MUTUAL'); handlePurchase(mutual); }} disabled={purchasing}>
                     <View style={styles.planTopRow}>
                       <Text style={styles.planName}>互相守护版</Text>
                     </View>
@@ -325,9 +317,11 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                     </View>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity style={[styles.primaryBtn, (!selectedPackage || purchasing) && styles.disabledBtn]} onPress={() => handlePurchase(selectedPackage)} disabled={!selectedPackage || purchasing}>
-                  {purchasing ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>{selected === 'LIFETIME' ? '一次买断 · 永久解锁' + (lifetime ? ' ' + lifetime.product.priceString : '') : selected === 'ANNUAL' ? '开始 7 天家庭守护体验' : selected === 'MUTUAL' ? '开始 7 天互相守护体验' : '开始 7 天个人自救体验'}</Text>}
-                </TouchableOpacity>
+                {purchasing ? (
+                  <View style={styles.purchasingRow}><ActivityIndicator color="#2E7D32" /><Text style={styles.purchasingText}>正在处理…</Text></View>
+                ) : (
+                  <Text style={styles.tapHint}>点选任一方案即可购买（Apple 会再次确认）</Text>
+                )}
               </View>
             ) : (
               <View style={styles.emptyState}>
@@ -417,6 +411,9 @@ const styles = StyleSheet.create({
   primaryBtn: { backgroundColor: '#2E7D32', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 6 },
   disabledBtn: { opacity: 0.65 },
   primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  purchasingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14 },
+  purchasingText: { color: '#2E7D32', fontSize: 14, fontWeight: 'bold' },
+  tapHint: { textAlign: 'center', color: '#999', fontSize: 12, paddingTop: 8 },
   emptyState: { alignItems: 'center', backgroundColor: '#FFF8E7', borderRadius: 16, padding: 16, marginBottom: 10 },
   emptyTitle: { fontSize: 16, fontWeight: 'bold', color: '#7A4C00', marginBottom: 6 },
   emptyText: { fontSize: 13, color: '#7A4C00', textAlign: 'center', lineHeight: 19, marginBottom: 12 },

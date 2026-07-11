@@ -1,13 +1,15 @@
 import PaywallModal from '@/components/PaywallModal';
 import { getPlanDay, PLAN_DAYS } from '@/planTasks';
-import { loadMoneyState } from '@/storage';
+import { getTodayString, loadData, saveData } from '@/storage';
 import { getSubscriptionSnapshot } from '@/subscription';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 // The paid main course: today's task from the 90-day plan. Free users get the first 3 days as a
-// taste, then it's locked behind the paywall (you can't sell a plan that isn't really there).
+// taste, then it's locked. Progress is engagement-based: it advances at most one plan day per calendar
+// day the user opens the app, and NEVER skips — so forgetting for a while just pauses progress rather
+// than jumping ahead and losing the missed days' tasks.
 const FREE_PREVIEW_DAYS = 3;
 
 export default function PlanTodayCard() {
@@ -20,10 +22,22 @@ export default function PlanTodayCard() {
     useCallback(() => {
       let active = true;
       (async () => {
-        const money = await loadMoneyState();
         const snap = await getSubscriptionSnapshot();
+        const today = getTodayString();
+        // Advance at most one plan day per calendar day the user opens the app; never skip.
+        let progress = Number(await loadData('planDay')) || 0;
+        const lastAdvance = await loadData('planLastAdvanceDate');
+        if (progress < 1) {
+          progress = 1;
+          await saveData('planDay', '1');
+          await saveData('planLastAdvanceDate', today);
+        } else if (lastAdvance !== today) {
+          progress = Math.min(PLAN_DAYS.length, progress + 1);
+          await saveData('planDay', String(progress));
+          await saveData('planLastAdvanceDate', today);
+        }
         if (!active) return;
-        setDay(Math.min(PLAN_DAYS.length, Math.max(1, money.daysSinceQuit)));
+        setDay(progress);
         setIsPro(snap.isPro);
         setLoaded(true);
       })();
@@ -40,17 +54,21 @@ export default function PlanTodayCard() {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.label}>今天的任务 · 第 {day} 天 / 90</Text>
-      <Text style={styles.title}>{task.title}</Text>
       {locked ? (
         <>
-          <Text style={styles.lockedBody}>{task.body.slice(0, 22)}……</Text>
+          <Text style={styles.label}>90 天新生计划</Text>
+          <Text style={styles.title}>一天一件小事，陪你走完 90 天</Text>
+          <Text style={styles.lockedBody}>切断触发 → 稳住习惯 → 修复关系 → 拿回人生。解锁后，每天给你一件具体、能做到的小事。</Text>
           <TouchableOpacity style={styles.unlockBtn} onPress={() => setShowPaywall(true)}>
             <Text style={styles.unlockText}>🔒 解锁完整 90 天计划</Text>
           </TouchableOpacity>
         </>
       ) : (
-        <Text style={styles.body}>{task.body}</Text>
+        <>
+          <Text style={styles.label}>今天的任务 · 第 {day} 天 / 90</Text>
+          <Text style={styles.title}>{task.title}</Text>
+          <Text style={styles.body}>{task.body}</Text>
+        </>
       )}
       <PaywallModal visible={showPaywall} onboardingPrompt onClose={() => setShowPaywall(false)} onSuccess={() => { setShowPaywall(false); setIsPro(true); }} />
     </View>

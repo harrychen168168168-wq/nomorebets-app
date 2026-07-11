@@ -1,8 +1,8 @@
 import HomeCompanionStories from '@/components/HomeCompanionStories';
-import MoneySavedCard from '@/components/MoneySavedCard';
 import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
 import PlanTodayCard from '@/components/PlanTodayCard';
+import StreakStrengthCard from '@/components/StreakStrengthCard';
 import { getReminderSettings } from '@/notifications';
 import { getSubscriptionSnapshot } from '@/subscription';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -182,7 +182,7 @@ export default function HomePage() {
           )}
         </View>
 
-        <MoneySavedCard />
+        <StreakStrengthCard />
 
         <PlanTodayCard />
 

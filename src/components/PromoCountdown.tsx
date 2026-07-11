@@ -9,11 +9,13 @@ export default function PromoCountdown({
   totalMs,
   secondsLeft,
   regularPrice,
+  embedded,
 }: {
   deadline: number;
   totalMs: number;
   secondsLeft: number;
   regularPrice?: string;
+  embedded?: boolean;
 }) {
   const [trackW, setTrackW] = useState(0);
   const drain = useRef(new Animated.Value(1)).current; // 1 = full, 0 = empty
@@ -53,8 +55,8 @@ export default function PromoCountdown({
   const ss = String(secondsLeft % 60).padStart(2, '0');
 
   return (
-    <View style={[styles.wrap, urgent && styles.wrapUrgent]}>
-      <Animated.View style={[styles.glow, urgent && styles.glowUrgent, { opacity: glowOpacity }]} pointerEvents="none" />
+    <View style={[styles.wrap, urgent && styles.wrapUrgent, embedded && styles.wrapEmbedded]}>
+      {embedded ? null : <Animated.View style={[styles.glow, urgent && styles.glowUrgent, { opacity: glowOpacity }]} pointerEvents="none" />}
       <View style={styles.row}>
         <Animated.Text style={[styles.flame, { transform: [{ scale: flameScale }] }]}>🔥</Animated.Text>
         <View style={styles.mid}>
@@ -73,6 +75,7 @@ export default function PromoCountdown({
 const styles = StyleSheet.create({
   wrap: { backgroundColor: '#FFF3E6', borderRadius: 16, borderWidth: 2, borderColor: '#E67E22', paddingHorizontal: 14, paddingTop: 12, paddingBottom: 14, marginBottom: 14, overflow: 'hidden' },
   wrapUrgent: { backgroundColor: '#FDECEA', borderColor: '#C0392B' },
+  wrapEmbedded: { backgroundColor: 'transparent', borderWidth: 0, marginBottom: 0, marginTop: 12, paddingHorizontal: 0, paddingTop: 10, paddingBottom: 0 },
   glow: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#E67E22' },
   glowUrgent: { backgroundColor: '#C0392B' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
