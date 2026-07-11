@@ -21,13 +21,13 @@ export default function HomeCompanionStories() {
           <Text style={styles.title}>今天也有人在坚持</Text>
           <Text style={styles.sub}>看看别人怎么撑过最难的时刻。</Text>
         </View>
-        <TouchableOpacity onPress={() => router.push('/hope')}><Text style={styles.more}>查看更多</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => router.push('/hopewall' as never)}><Text style={styles.more}>查看更多</Text></TouchableOpacity>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {stories.map((story) => <StoryCard key={story.id} story={story} userId={user?.id || 'signed_out'} compact />)}
       </ScrollView>
       <View style={styles.links}>
-        <TouchableOpacity style={styles.linkBtn} onPress={() => router.push('/hope')}><Text style={styles.linkText}>我也想分享</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.linkBtn} onPress={() => router.push('/hopewall' as never)}><Text style={styles.linkText}>我也想分享</Text></TouchableOpacity>
         <TouchableOpacity style={[styles.linkBtn, styles.urgeBtn]} onPress={() => router.push('/emergency')}><Text style={styles.urgeText}>我现在很想赌</Text></TouchableOpacity>
       </View>
     </View>

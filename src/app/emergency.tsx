@@ -8,7 +8,7 @@ import { AI_ADDON_10_PRODUCT_ID, AI_PROXY_URL } from '@/config';
 import { configureRevenueCat, getSubscriptionSnapshot } from '@/subscription';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Linking, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Purchases from 'react-native-purchases';
 import { loadData as loadStoredData } from '../storage';
 
@@ -173,7 +173,7 @@ export default function EmergencyPage() {
   return (
     <PageContainer>
       <KeyboardAwareScrollView style={styles.container}>
-        {showModal && (
+        <Modal visible={showModal} transparent animationType="fade" onRequestClose={() => setShowModal(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalBox}>
               {modalType === 'no' ? (
@@ -191,7 +191,7 @@ export default function EmergencyPage() {
               )}
             </View>
           </View>
-        )}
+        </Modal>
 
         <View style={styles.header}><Text style={styles.headerTitle}>我现在想去赌场</Text><Text style={styles.headerSub}>冲动不是命令。它只是一个感觉。它会过去。</Text></View>
 
@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
   btnFinalGoodText: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
   btnFinalBad: { borderWidth: 1.5, borderColor: '#D32F2F', borderRadius: 12, padding: 16, alignItems: 'center' },
   btnFinalBadText: { color: '#D32F2F', fontSize: 17 },
-  modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 999, padding: 24 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalBox: { backgroundColor: '#fff', borderRadius: 20, padding: 28, width: '100%' },
   modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#2E7D32', marginBottom: 16, textAlign: 'center' },
   modalText: { fontSize: 14, color: '#333', lineHeight: 22, marginBottom: 24 },

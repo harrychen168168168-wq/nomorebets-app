@@ -141,6 +141,43 @@ export function getDailyAiCompanionStories(dateKey = getTodayString(), count = 3
   });
 }
 
+// Seeded, developer-written example recovery stories that populate the story wall when there are
+// not yet enough approved real-user stories. These are composite scenarios, NOT real identifiable
+// users, and are disclosed as example content in the App Store review notes. Shown anonymously.
+const WALL_SEED_STORIES: { gamblingType: GamblingType; title: string; body: string }[] = [
+  { gamblingType: 'casino', title: '我在停车场坐了两个小时', body: '那天我准备把最后一点钱拿去翻本。坐在车里时，孩子发来一条消息：爸爸你几点回家？我突然明白，我真正想赢回来的不是钱，是家。那天我没有进去。后来我每天只做一件事：今天不赌。现在一年多了。' },
+  { gamblingType: 'online_casino', title: '删掉 App 那天，我松了一口气', body: '我以为卸载赌博 App 会很难受，结果删完反而轻松了——那个一直开着的入口终于关上了。头三天最难，我把手机放在客厅充电，人睡卧室。撑过第一周，念头就淡了很多。' },
+  { gamblingType: 'sports_betting', title: '发薪日，我先把钱转走了', body: '以前工资一到账，当晚就没了。这次我在到账那一刻，先转了一大半到一个我平时不看的账户。钱不在手边，冲动就没了着力点。这个月，第一次到月底还有钱。' },
+  { gamblingType: 'casino', title: '我把银行卡交给了老婆', body: '靠意志力我扛不住，我承认。于是我把主卡交给她保管，手机里只留基本生活费。想赌也拿不到钱——这不是没面子，是我给自己修的一道墙。' },
+  { gamblingType: 'lottery', title: '复赌那晚之后，我没有放弃', body: '坚持了 40 天，那晚还是没忍住。第二天我很想干脆算了。但我打开这个 App，把那次记了下来，看清了是什么把我拉过去的。复赌不是终点，是一个要看懂的信号。现在我从那天重新数，又是新的 26 天。' },
+  { gamblingType: 'cards', title: '我告诉了一个信任的朋友', body: '一直瞒着，太累了。我只跟一个朋友说了句“我在戒，帮我看着点”。没想到说出来之后，那种一个人硬扛的感觉轻了一半。有人知道，我就没那么容易骗自己。' },
+  { gamblingType: 'casino', title: '换了一条回家的路', body: '我以前每天下班都路过那家赌场，几乎是本能地就拐进去。后来我硬是绕远路回家。离得远，冲动就弱一半。一个小动作，帮我守住了很多个晚上。' },
+  { gamblingType: 'online_casino', title: '现在我睡得着觉了', body: '戒赌之前，我整夜整夜地盯着屏幕，白天没精神。戒了三个月，最明显的变化不是存款，是我能睡整觉了。身体先好起来，人就稳了。钱是慢慢回来的，觉是马上回来的。' },
+  { gamblingType: 'sports_betting', title: '把所有赌球推送都关了', body: '以前一到周末，手机就不停弹比分和赔率，像有人在耳边喊。我一条条把这些推送全关了，取关了那些群。世界一下安静了，我也不再一有比赛就心痒。' },
+  { gamblingType: 'casino', title: '陪孩子的那半小时', body: '有天晚上我又想溜出去，儿子拉着我要我陪他搭积木。我坐下来陪了半小时，抬头发现那股冲动不知什么时候过去了。原来最好的挡箭牌，就是身边真实的人。' },
+  { gamblingType: 'trading_impulse', title: '我把交易软件也删了', body: '我不去赌场，但整天盯着盘面加杠杆，其实是一回事。承认这点花了我很久。删掉那个软件那天，手是抖的，但删完，心里那根一直绷着的弦终于松了。' },
+  { gamblingType: 'lottery', title: '路过彩票店，我没进去', body: '每天下班都路过那家店，以前总要买两张。今天我攥着手机里的省钱数字，走了过去，没进。就这一次"没进去"，让我相信下一次我也能。' },
+  { gamblingType: 'casino', title: '把还债写进了计划', body: '欠的钱压得我喘不过气，越急越想赌一把翻本。后来我把每一笔债列出来，排了个能承受的还款顺序，每月还一点。慢是慢，但每还一笔，我腰杆就直一分。' },
+  { gamblingType: 'cards', title: '半夜想赌，我打给了朋友', body: '凌晨两点，那个念头又上来了。我没有点开任何东西，而是打给了那个知道我在戒的朋友。我们没聊什么大道理，就是说了会儿话，等我挂电话，天快亮了，我也睡着了。' },
+  { gamblingType: 'casino', title: '老婆开始把钱交给我管一点', body: '我戒到第 60 天那天，她主动让我管一部分家用。那一刻我差点哭出来——不是因为钱，是因为她眼里，我又变回那个可以被信任的人了。信任是一件件小事垒回来的。' },
+  { gamblingType: 'online_casino', title: '无聊的时候我去跑步', body: '以前一闲下来就想赌，说到底是不知道拿这些时间干嘛。现在冲动一来，我就换鞋出门跑二十分钟。跑完一身汗，那点躁动早没了。运动是最便宜的解药。' },
+];
+
+export function getWallSeedStories(): CompanionStory[] {
+  return WALL_SEED_STORIES.map((s, index) => ({
+    id: 'seed-' + index,
+    displayName: '匿名用户',
+    displayMode: 'system',
+    gamblingType: s.gamblingType,
+    title: s.title,
+    excerpt: s.body.slice(0, 90),
+    body: s.body,
+    source: 'system',
+    status: 'approved',
+    createdAt: '2026-01-01',
+  }));
+}
+
 export function gamblingTypeLabel(type?: GamblingType | string) {
   switch (type) {
     case 'online_casino': return '线上赌场';

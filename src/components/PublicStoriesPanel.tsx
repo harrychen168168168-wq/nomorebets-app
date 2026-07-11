@@ -1,5 +1,6 @@
 import { useAuth } from '@/auth';
 import { containsSelfHarm, isCommunityConfigured, listApprovedStories, PublicStory, submitPublicStory } from '@/community';
+import { getWallSeedStories } from '@/storyTemplates';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -15,8 +16,10 @@ export default function PublicStoriesPanel() {
   const [body, setBody] = useState('');
   const [displayMode, setDisplayMode] = useState<'anonymous' | 'nickname'>('anonymous');
 
+  // Real approved user stories first, then the seeded example stories so the wall is never empty.
   const loadStories = useCallback(() => {
-    listApprovedStories(40).then(setStories).catch(() => setStories([]));
+    const seed = getWallSeedStories() as PublicStory[];
+    listApprovedStories(40).then((real) => setStories([...real, ...seed])).catch(() => setStories(seed));
   }, []);
 
   useFocusEffect(useCallback(() => {

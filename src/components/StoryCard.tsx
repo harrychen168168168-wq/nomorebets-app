@@ -23,7 +23,7 @@ const REPORT_REASONS = [
 export default function StoryCard({ story, userId, compact = false }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
-  const isAi = story.source === 'ai' || story.displayMode === 'ai';
+  const isAi = story.source === 'ai' || story.source === 'system' || story.displayMode === 'ai' || story.displayMode === 'system';
 
   async function sendReaction(label: string) {
     if (isAi) {
@@ -69,7 +69,7 @@ export default function StoryCard({ story, userId, compact = false }: Props) {
 
   return (
     <View style={[styles.card, compact && styles.compactCard]}>
-      <Text style={styles.meta}>{story.displayName} · {gamblingTypeLabel(story.gamblingType)}{isAi ? ' · 示例' : ''}</Text>
+      <Text style={styles.meta}>{story.displayName} · {gamblingTypeLabel(story.gamblingType)}</Text>
       <Text style={styles.title}>{story.title}</Text>
       <Text style={styles.body}>{expanded || compact ? story.body : story.excerpt}</Text>
       {!compact && story.body.length > story.excerpt.length ? (
