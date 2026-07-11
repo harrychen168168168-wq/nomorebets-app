@@ -1,4 +1,5 @@
 import { useAuth } from '@/auth';
+import BreathingTimer from '@/components/BreathingTimer';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
@@ -205,11 +206,16 @@ export default function EmergencyPage() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>先给自己 5 分钟</Text>
-          <Text style={styles.cardSub}>冲动通常会在几分钟内变弱。你只需要先撑过这一段。</Text>
-          <Text style={styles.countdown}>{minutes}:{seconds}</Text>
-          <Text style={styles.countdownLabel}>冷静倒计时</Text>
-          {isWaiting && <View style={styles.breathCard}><Text style={styles.breathText}>慢慢吸气，慢慢呼气。你正在把选择权拿回来。</Text></View>}
-          <TouchableOpacity style={[styles.btnGreen, isWaiting && styles.btnDisabled]} onPress={() => { setIsWaiting(true); setCountdown(300); }}><Text style={styles.btnGreenText}>{isWaiting ? '计时中...' : '我愿意等 5 分钟'}</Text></TouchableOpacity>
+          <Text style={styles.cardSub}>冲动通常会在几分钟内变弱。跟着呼吸，撑过这一段。</Text>
+          {isWaiting ? (
+            <BreathingTimer secondsLeft={countdown} />
+          ) : (
+            <>
+              <Text style={styles.countdown}>{minutes}:{seconds}</Text>
+              <Text style={styles.countdownLabel}>冷静倒计时</Text>
+            </>
+          )}
+          <TouchableOpacity style={[styles.btnGreen, isWaiting && styles.btnDisabled]} disabled={isWaiting} onPress={() => { setIsWaiting(true); setCountdown(300); }}><Text style={styles.btnGreenText}>{isWaiting ? '跟着呼吸…' : '我愿意等 5 分钟'}</Text></TouchableOpacity>
         </View>
 
         {lastLoss > 0 && (

@@ -1,4 +1,5 @@
 import { ANNUAL_PRODUCT_IDS, LIFETIME_LAUNCH_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
+import PromoCountdown from '@/components/PromoCountdown';
 import { loadData, saveData } from '@/storage';
 import { configureRevenueCat, customerInfoToSnapshot, getFriendlyPurchaseError } from '@/subscription';
 import { useEffect, useMemo, useState } from 'react';
@@ -137,7 +138,6 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
   }, [packages]);
   // Countdown: seconds left in the first-session launch offer.
   const countdownRemaining = promoDeadline ? Math.max(0, Math.ceil((promoDeadline - nowTs) / 1000)) : 0;
-  const countdownText = String(Math.floor(countdownRemaining / 60)).padStart(2, '0') + ':' + String(countdownRemaining % 60).padStart(2, '0');
   // Promo is on only while the timer is live AND the launch product is really cheaper than the regular.
   const promoActive = !!launchLifetime && countdownRemaining > 0 && (!regularLifetime || launchLifetime.product.price < regularLifetime.product.price);
   // The buyout package actually shown/charged: launch price during the countdown, regular price after.
@@ -225,6 +225,15 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                   : '选择你的方案，头 7 天免费。'}
             </Text>
 
+            {promoActive && promoDeadline ? (
+              <PromoCountdown
+                deadline={promoDeadline}
+                totalMs={PROMO_DURATION_MS}
+                secondsLeft={countdownRemaining}
+                regularPrice={regularLifetime?.product.priceString}
+              />
+            ) : null}
+
             {onboardingPrompt ? (
               <View style={styles.recommendCard}>
                 <Text style={styles.recommendTitle}>最省心：一次买断，永久拥有</Text>
@@ -247,7 +256,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                   <TouchableOpacity style={[styles.lifetimeCard, selected === 'LIFETIME' && styles.lifetimeCardSelected]} onPress={() => setSelected('LIFETIME')} disabled={purchasing}>
                     <View style={styles.planTopRow}>
                       <Text style={styles.lifetimeName}>终身会员 · 一次买断</Text>
-                      <View style={styles.badgeGold}><Text style={styles.badgeText}>{promoActive ? '🔥 限时 ' + countdownText : '🔥 最超值'}</Text></View>
+                      <View style={styles.badgeGold}><Text style={styles.badgeText}>{promoActive ? '🔥 促销价' : '🔥 最超值'}</Text></View>
                     </View>
                     <View style={styles.priceRow}>
                       {promoActive && regularLifetime ? <Text style={styles.lifetimeWas}>{regularLifetime.product.priceString}</Text> : null}
@@ -258,7 +267,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                       <Text style={styles.lifetimeLoss}>≈ 你 {lifetimeLossDays} 天输掉的钱，换一辈子不再碰赌。</Text>
                     ) : null}
                     {promoActive ? (
-                      <Text style={styles.lifetimeUrgent}>促销价 · 一年订阅的钱直接买断永久 · 仅剩 {countdownText}，结束后恢复{regularLifetime ? ' ' + regularLifetime.product.priceString : ''}。</Text>
+                      <Text style={styles.lifetimeUrgent}>促销价 · 一年订阅的钱直接买断永久，结束后恢复{regularLifetime ? ' ' + regularLifetime.product.priceString : ''}。</Text>
                     ) : lifetimeYears > 0 ? (
                       <Text style={styles.lifetimeCompare}>≈ {lifetimeYears} 年的订阅费，之后永远免费。订满两年，买断更划算。</Text>
                     ) : null}
