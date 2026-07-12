@@ -23,7 +23,6 @@ const MILESTONES = [
 
 export default function HopePage() {
   const [streak, setStreak] = useState(0);
-  const [monthlyLoss, setMonthlyLoss] = useState(0);
   const [whyQuit, setWhyQuit] = useState('');
   const [savedWhyQuit, setSavedWhyQuit] = useState('');
   const [letter, setLetter] = useState('');
@@ -39,14 +38,12 @@ export default function HopePage() {
   }, []);
 
   async function loadData() {
-    const [s, loss, why, fl] = await Promise.all([
+    const [s, why, fl] = await Promise.all([
       loadStoredData('streak'),
-      loadStoredData('monthlyLoss'),
       loadStoredData('whyQuit'),
       loadStoredData('futureLetter'),
     ]);
     setStreak(Number(s) || 0);
-    setMonthlyLoss(Number(loss) || 0);
     if (why) { setWhyQuit(why); setSavedWhyQuit(why); }
     if (fl) setSavedLetter(fl);
   }
@@ -62,7 +59,6 @@ export default function HopePage() {
     setShowLetterInput(false);
   }
 
-  const yearlyLoss = monthlyLoss * 12;
   const currentMilestone = MILESTONES.filter((m) => streak >= m.days).pop();
   const nextMilestone = MILESTONES.find((m) => streak < m.days);
 
@@ -84,7 +80,15 @@ export default function HopePage() {
           {nextMilestone && <View style={styles.nextMilestoneBox}><Text style={styles.nextMilestoneText}>距离“{nextMilestone.emoji} {nextMilestone.title}”还剩 {nextMilestone.days - streak} 天</Text></View>}
         </View>
 
-        {yearlyLoss > 0 && <View style={styles.calcCard}><Text style={styles.calcTitle}>如果你坚持一年...</Text><Text style={styles.calcSub}>按当前月均损失计算</Text><Text style={styles.calcAmount}>${yearlyLoss.toLocaleString()}</Text><Text style={styles.calcAmountLabel}>一年可以节省</Text></View>}
+        <View style={styles.futureCard}>
+          <Text style={styles.futureTitle}>一年后的你</Text>
+          <Text style={styles.futureSub}>把这一年走完，你会拿回这些——</Text>
+          <Text style={styles.futureItem}>🗓️  365 天没进赌场</Text>
+          <Text style={styles.futureItem}>😴  睡回来的觉</Text>
+          <Text style={styles.futureItem}>🤝  重新被家人信任</Text>
+          <Text style={styles.futureItem}>🧾  不再被赌债追着跑</Text>
+          <Text style={styles.futureItem}>💪  拿回自己的人生</Text>
+        </View>
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>我为什么戒赌</Text><Text style={styles.cardSub}>写下你的理由，危急时刻翻出来看。</Text>
@@ -128,11 +132,10 @@ const styles = StyleSheet.create({
   milestoneDesc: { fontSize: 13, color: '#bbb', lineHeight: 20 },
   nextMilestoneBox: { backgroundColor: '#FFF8E7', borderRadius: 10, padding: 12, marginTop: 8 },
   nextMilestoneText: { fontSize: 13, color: '#E67E22', textAlign: 'center' },
-  calcCard: { backgroundColor: '#F3F8FF', margin: 16, marginBottom: 8, borderRadius: 16, padding: 20 },
-  calcTitle: { fontSize: 17, fontWeight: 'bold', color: '#1565C0', marginBottom: 4 },
-  calcSub: { fontSize: 13, color: '#888', marginBottom: 16 },
-  calcAmount: { fontSize: 48, fontWeight: 'bold', color: '#1565C0', textAlign: 'center' },
-  calcAmountLabel: { fontSize: 13, color: '#888', textAlign: 'center', marginBottom: 16 },
+  futureCard: { backgroundColor: '#E8F5E9', margin: 16, marginBottom: 8, borderRadius: 16, padding: 20 },
+  futureTitle: { fontSize: 17, fontWeight: 'bold', color: '#2E7D32', marginBottom: 4 },
+  futureSub: { fontSize: 13, color: '#5B8C5A', marginBottom: 12, lineHeight: 20 },
+  futureItem: { fontSize: 15, color: '#2F4A32', lineHeight: 32 },
   savedBox: { backgroundColor: '#F8FAF7', borderRadius: 10, padding: 14 },
   savedText: { fontSize: 14, color: '#333', lineHeight: 22 },
   editBtn: { color: '#2E7D32', fontSize: 13, marginTop: 8, fontWeight: 'bold' },

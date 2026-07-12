@@ -7,7 +7,7 @@ import { getSubscriptionSnapshot } from '@/subscription';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { checkInNoGamble, claimProtectionCardToday, completeAccompany, completeWalk, getProtectionState, getTodayString, loadAppState, loadData, loadMoneyState, readDailyRecords, saveData } from '../storage';
+import { checkInNoGamble, claimProtectionCardToday, getProtectionState, getTodayString, loadAppState, loadData, loadMoneyState, readDailyRecords, saveData } from '../storage';
 
 const QUOTES = [
   '赌场赢的是概率，你赢回的是人生。',
@@ -25,14 +25,31 @@ const MILESTONES = [
   { days: 365, emoji: '👑', label: '一年新生' },
 ];
 
+// Turn a loss amount into everyday things it could have bought — the visual gut-punch.
+// Only tiers the amount actually covers (n >= 1) are shown, biggest first, max 3.
+const LOSS_EQUIV = [
+  { per: 40, emoji: '👕', label: (n: number) => `给孩子买 ${n} 件新衣服` },
+  { per: 120, emoji: '🍽️', label: (n: number) => `带全家下 ${n} 次馆子` },
+  { per: 300, emoji: '🎢', label: (n: number) => `陪孩子玩 ${n} 天游乐园` },
+  { per: 1500, emoji: '✈️', label: (n: number) => `带全家旅行 ${n} 次` },
+  { per: 15000, emoji: '🚗', label: (n: number) => (n > 1 ? `换 ${n} 辆二手车` : '给自己换一辆二手车') },
+  { per: 50000, emoji: '🏠', label: (_n: number) => '一套房子的首付' },
+];
+
+function lossEquivalents(amount: number) {
+  return LOSS_EQUIV
+    .map((e) => ({ ...e, n: Math.floor(amount / e.per) }))
+    .filter((e) => e.n >= 1)
+    .slice(-3)
+    .reverse();
+}
+
 export default function HomePage() {
   const router = useRouter();
   const [streak, setStreak] = useState(0);
   const [monthlyDays, setMonthlyDays] = useState(0);
   const [monthlyLoss, setMonthlyLoss] = useState(0);
   const [todayChecked, setTodayChecked] = useState(false);
-  const [walked, setWalked] = useState(false);
-  const [accompanied, setAccompanied] = useState(false);
   const [quoteIndex, setQuoteIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [todayGambled, setTodayGambled] = useState(false);
@@ -51,8 +68,6 @@ export default function HomePage() {
         setStreak(state.streak);
         setMonthlyDays(state.monthlyDays);
         setTodayChecked(state.todayChecked);
-        setWalked(state.walkedToday);
-        setAccompanied(state.accompaniedToday);
         setMonthlyLoss(state.monthlyLoss);
         setTodayGambled(state.todayGambled);
         const snap = await getSubscriptionSnapshot();
@@ -124,16 +139,6 @@ export default function HomePage() {
       await saveData('reconv_payday_' + month, '1');
       openReconvert();
     }
-  }
-
-  async function handleWalk() {
-    await completeWalk();
-    setWalked(true);
-  }
-
-  async function handleAccompany() {
-    await completeAccompany();
-    setAccompanied(true);
   }
 
   async function openLossDetail() {
@@ -231,13 +236,6 @@ export default function HomePage() {
             <Text style={styles.btnOutlineText}>我刚从赌场回来</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.taskCard}>
-          <Text style={styles.taskTitle}>今天先守住一件事</Text>
-          <View style={styles.taskRow}><Text style={styles.taskItem}>今天状态记录</Text><Text style={[styles.taskStatus, todayChecked && styles.taskDone]}>{todayChecked ? '已完成' : '未完成'}</Text></View>
-          <TouchableOpacity style={styles.taskRow} onPress={handleWalk}><Text style={styles.taskItem}>出门散步 10 分钟</Text><Text style={[styles.taskStatus, walked && styles.taskDone]}>{walked ? '已完成' : '点击完成'}</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.taskRow} onPress={handleAccompany}><Text style={styles.taskItem}>陪伴家人</Text><Text style={[styles.taskStatus, accompanied && styles.taskDone]}>{accompanied ? '已完成' : '点击完成'}</Text></TouchableOpacity>
-        </View>
-
         <HomeCompanionStories />
         <PaywallModal visible={showReconvert} onboardingPrompt monthlyLoss={reconvertLoss} onClose={() => setShowReconvert(false)} onSuccess={() => { setShowReconvert(false); setIsPro(true); }} />
 
@@ -261,6 +259,14 @@ export default function HomePage() {
                   ))}
                 </ScrollView>
               )}
+              {monthlyLoss > 0 && lossEquivalents(monthlyLoss).length > 0 ? (
+                <View style={styles.equivBox}>
+                  <Text style={styles.equivTitle}>这些钱，本可以是——</Text>
+                  {lossEquivalents(monthlyLoss).map((e) => (
+                    <Text key={e.per} style={styles.equivRow}>{e.emoji} {e.label(e.n)}</Text>
+                  ))}
+                </View>
+              ) : null}
               <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowLossDetail(false)}>
                 <Text style={styles.modalCloseText}>关闭</Text>
               </TouchableOpacity>
@@ -326,12 +332,6 @@ const styles = StyleSheet.create({
   confirmCancelText: { color: '#888', fontSize: 14 },
   confirmOk: { flex: 1, backgroundColor: '#2E7D32', borderRadius: 10, padding: 12, alignItems: 'center' },
   confirmOkText: { color: '#fff', fontSize: 14, fontWeight: 'bold' },
-  taskCard: { backgroundColor: '#fff', margin: 16, marginBottom: 8, borderRadius: 16, padding: 20 },
-  taskTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 12 },
-  taskRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f5f5f5' },
-  taskItem: { fontSize: 14, color: '#444' },
-  taskStatus: { fontSize: 13, color: '#bbb' },
-  taskDone: { color: '#2E7D32', fontWeight: 'bold' },
   pledgeCard: { backgroundColor: '#fff', margin: 16, marginTop: 8, marginBottom: 8, borderRadius: 16, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: '#E6EFE6' },
   pledgeTitle: { fontSize: 17, fontWeight: 'bold', color: '#2E7D32', marginBottom: 6 },
   pledgeSub: { fontSize: 13, color: '#777', lineHeight: 20, textAlign: 'center', marginBottom: 14 },
@@ -364,6 +364,9 @@ const styles = StyleSheet.create({
   lossDate: { fontSize: 14, color: '#444' },
   lossType: { fontSize: 11, color: '#aaa', marginTop: 2 },
   lossAmount: { fontSize: 15, fontWeight: 'bold', color: '#D32F2F' },
+  equivBox: { backgroundColor: '#FFF8E7', borderRadius: 12, padding: 14, marginTop: 12 },
+  equivTitle: { fontSize: 13, fontWeight: 'bold', color: '#9A6A00', marginBottom: 8 },
+  equivRow: { fontSize: 14, color: '#5D4037', lineHeight: 26 },
   modalCloseBtn: { marginTop: 14, backgroundColor: '#2E7D32', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
   modalCloseText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
 });
