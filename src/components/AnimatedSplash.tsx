@@ -78,6 +78,7 @@ export default function AnimatedSplash({ onDone }: { onDone: () => void }) {
       </View>
       <Animated.Text style={[styles.title, { opacity: titleOpacity, transform: [{ translateY: titleY }] }]}>NoMoreBets</Animated.Text>
       <Animated.Text style={[styles.tagline, { opacity: taglineOpacity }]}>每一天，都是新的开始</Animated.Text>
+      <Animated.Text style={[styles.warmLine, { opacity: taglineOpacity }]}>你不是一个人在战斗</Animated.Text>
       <View style={styles.dots}>
         <Animated.View style={[styles.dot, { opacity: dot1 }]} />
         <Animated.View style={[styles.dot, { opacity: dot2 }]} />
@@ -94,6 +95,7 @@ const styles = StyleSheet.create({
   logo: { fontSize: 70 },
   title: { fontSize: 30, fontWeight: 'bold', color: '#2E7D32', letterSpacing: 0.5 },
   tagline: { fontSize: 14, color: '#8A8A8A', marginTop: 10 },
+  warmLine: { fontSize: 15, fontWeight: 'bold', color: '#2E7D32', marginTop: 12, letterSpacing: 0.3 },
   dots: { flexDirection: 'row', gap: 8, marginTop: 34 },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#2E7D32' },
 });

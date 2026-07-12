@@ -2,13 +2,12 @@ import HomeCompanionStories from '@/components/HomeCompanionStories';
 import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
 import PlanTodayCard from '@/components/PlanTodayCard';
-import StreakStrengthCard from '@/components/StreakStrengthCard';
 import { getReminderSettings } from '@/notifications';
 import { getSubscriptionSnapshot } from '@/subscription';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { checkInNoGamble, claimProtectionCardToday, completeAccompany, completeWalk, getProtectionState, getTodayString, loadAppState, loadData, loadMoneyState, saveData } from '../storage';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { checkInNoGamble, claimProtectionCardToday, completeAccompany, completeWalk, getProtectionState, getTodayString, loadAppState, loadData, loadMoneyState, readDailyRecords, saveData } from '../storage';
 
 const QUOTES = [
   '赌场赢的是概率，你赢回的是人生。',
@@ -29,7 +28,6 @@ const MILESTONES = [
 export default function HomePage() {
   const router = useRouter();
   const [streak, setStreak] = useState(0);
-  const [longestStreak, setLongestStreak] = useState(0);
   const [monthlyDays, setMonthlyDays] = useState(0);
   const [monthlyLoss, setMonthlyLoss] = useState(0);
   const [todayChecked, setTodayChecked] = useState(false);
@@ -43,13 +41,14 @@ export default function HomePage() {
   const [isPro, setIsPro] = useState(false);
   const [showReconvert, setShowReconvert] = useState(false);
   const [reconvertLoss, setReconvertLoss] = useState(0);
+  const [showLossDetail, setShowLossDetail] = useState(false);
+  const [lossItems, setLossItems] = useState<{ date: string; amount: number; gameType: string }[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       const init = async () => {
         const state = await loadAppState();
         setStreak(state.streak);
-        setLongestStreak(state.longestStreak);
         setMonthlyDays(state.monthlyDays);
         setTodayChecked(state.todayChecked);
         setWalked(state.walkedToday);
@@ -82,7 +81,6 @@ export default function HomePage() {
     const result = await checkInNoGamble();
     const state = await loadAppState();
     setStreak(result.newStreak);
-    setLongestStreak(result.newLongest);
     setMonthlyDays(result.newMonthlyDays);
     setMonthlyLoss(state.monthlyLoss);
     setTodayChecked(true);
@@ -99,7 +97,6 @@ export default function HomePage() {
     }
     const state = await loadAppState();
     setStreak(state.streak);
-    setLongestStreak(state.longestStreak);
     const prot = await getProtectionState(max);
     setProtectionAvailable(prot.available);
     setTodayProtected(prot.todayProtected);
@@ -139,6 +136,17 @@ export default function HomePage() {
     setAccompanied(true);
   }
 
+  async function openLossDetail() {
+    const records = await readDailyRecords();
+    const month = getTodayString().slice(0, 7);
+    const items = records
+      .filter((r) => r.date.startsWith(month) && r.gambled && r.result === 'lose')
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .map((r) => ({ date: r.date, amount: Number(r.amount) || 0, gameType: r.gameType || '' }));
+    setLossItems(items);
+    setShowLossDetail(true);
+  }
+
   if (loading) return <View style={styles.loadingContainer}><Text style={styles.loadingText}>加载中...</Text></View>;
 
   return (
@@ -148,8 +156,7 @@ export default function HomePage() {
           <Text style={styles.headerTitle}>新的开始</Text>
           <Text style={styles.headerSub}>NoMoreBets</Text>
           <View style={styles.warmBox}>
-            <Text style={styles.warmTitle}>你不是一个人在战斗</Text>
-            <Text style={styles.warmText}>无论今天发生了什么，你打开这个 App，就已经是在往回走。</Text>
+            <Text style={styles.warmText}>无论今天发生了什么，你打开这个 App，就已经在自救了。</Text>
           </View>
         </View>
 
@@ -171,57 +178,50 @@ export default function HomePage() {
           <View style={styles.statsRow}>
             <View style={styles.statBox}><Text style={styles.statNum}>{monthlyDays}</Text><Text style={styles.statLabel}>本月守住</Text></View>
             <View style={styles.statDivider} />
-            <View style={styles.statBox}><Text style={styles.statNum}>${monthlyLoss}</Text><Text style={styles.statLabel}>本月损失</Text></View>
+            <TouchableOpacity style={styles.statBox} onPress={openLossDetail} activeOpacity={0.7}><Text style={styles.statNum}>${monthlyLoss}</Text><Text style={styles.statLabelLink}>本月损失 ›</Text></TouchableOpacity>
             <View style={styles.statDivider} />
-            <View style={styles.statBox}><Text style={styles.statNum}>{longestStreak}</Text><Text style={styles.statLabel}>最长记录</Text></View>
+            <TouchableOpacity style={styles.statBox} onPress={() => router.push('/emergency')} activeOpacity={0.7}><Text style={styles.statActionIcon}>💪</Text><Text style={styles.statLabelLink}>扛住冲动 ›</Text></TouchableOpacity>
           </View>
-          {todayChecked && (
-            <View style={[styles.checkedBadge, todayGambled && styles.checkedBadgeRed]}>
-              <Text style={[styles.checkedText, todayGambled && styles.checkedTextRed]}>{todayGambled ? '今天已有赌场记录' : '今天已记录'}</Text>
-            </View>
-          )}
-        </View>
 
-        <StreakStrengthCard />
+          <View style={styles.pledgeSection}>
+            {todayChecked && !todayGambled ? (
+              <>
+                <Text style={styles.pledgeDoneTitle}>✓ 今天已承诺不赌</Text>
+                <Text style={styles.pledgeStreakBig}>已连续 {streak} 天</Text>
+                <Text style={styles.pledgeWarm}>你今天又为自己赢回了一天。明天再来一次。</Text>
+              </>
+            ) : todayGambled ? (
+              todayProtected ? (
+                <>
+                  <Text style={styles.pledgeDoneTitle}>🛡️ 今天已用保护卡</Text>
+                  <Text style={styles.pledgeStreakBig}>已连续 {streak} 天</Text>
+                  <Text style={styles.pledgeWarm}>连续记录保住了。这不是失败，是重新站稳，明天继续。</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.pledgeWarm}>今天有过高风险记录——这不是结局。明天是新的一天，你随时可以重新承诺。</Text>
+                  {protectionAvailable > 0 ? (
+                    <TouchableOpacity style={styles.protectBtn} onPress={handleUseProtection}>
+                      <Text style={styles.protectBtnText}>🛡️ 用一张保护卡保住连续记录（本月剩 {protectionAvailable} 张）</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              )
+            ) : (
+              <>
+                <Text style={styles.pledgeTitle}>今天的承诺</Text>
+                <Text style={styles.pledgeSub}>每天郑重地对自己说一次“今天不赌”，是最简单也最有力的一步。</Text>
+                <TouchableOpacity style={styles.pledgeBtn} onPress={handlePledge}>
+                  <Text style={styles.pledgeBtnText}>我承诺：今天不赌</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
 
         <PlanTodayCard />
 
-        <View style={styles.pledgeCard}>
-          {todayChecked && !todayGambled ? (
-            <>
-              <Text style={styles.pledgeDoneTitle}>✓ 今天已承诺不赌</Text>
-              <Text style={styles.pledgeStreakBig}>已连续 {streak} 天</Text>
-              <Text style={styles.pledgeWarm}>你今天又为自己赢回了一天。明天再来一次。</Text>
-            </>
-          ) : todayGambled ? (
-            todayProtected ? (
-              <>
-                <Text style={styles.pledgeDoneTitle}>🛡️ 今天已用保护卡</Text>
-                <Text style={styles.pledgeStreakBig}>已连续 {streak} 天</Text>
-                <Text style={styles.pledgeWarm}>连续记录保住了。这不是失败，是重新站稳，明天继续。</Text>
-              </>
-            ) : (
-              <>
-                <Text style={styles.pledgeWarm}>今天有过高风险记录——这不是结局。明天是新的一天，你随时可以重新承诺。</Text>
-                {protectionAvailable > 0 ? (
-                  <TouchableOpacity style={styles.protectBtn} onPress={handleUseProtection}>
-                    <Text style={styles.protectBtnText}>🛡️ 用一张保护卡保住连续记录（本月剩 {protectionAvailable} 张）</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </>
-            )
-          ) : (
-            <>
-              <Text style={styles.pledgeTitle}>今天的承诺</Text>
-              <Text style={styles.pledgeSub}>每天郑重地对自己说一次“今天不赌”，是最简单也最有力的一步。</Text>
-              <TouchableOpacity style={styles.pledgeBtn} onPress={handlePledge}>
-                <Text style={styles.pledgeBtnText}>我承诺：今天不赌</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-
-                <View style={styles.sceneCard}>
+        <View style={styles.sceneCard}>
           <Text style={styles.sceneTitle}>今天你需要哪种帮助？</Text>
           <Text style={styles.sceneSub}>赌场冲动不一定每天出现，但它来的时候很危险。先选一个最符合你现在情况的入口。</Text>
           <TouchableOpacity style={styles.btnOrange} onPress={() => router.push('/emergency')}>
@@ -240,6 +240,34 @@ export default function HomePage() {
 
         <HomeCompanionStories />
         <PaywallModal visible={showReconvert} onboardingPrompt monthlyLoss={reconvertLoss} onClose={() => setShowReconvert(false)} onSuccess={() => { setShowReconvert(false); setIsPro(true); }} />
+
+        <Modal visible={showLossDetail} transparent animationType="fade" onRequestClose={() => setShowLossDetail(false)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>本月损失明细</Text>
+              <Text style={styles.modalTotal}>本月累计损失 ${monthlyLoss}</Text>
+              {lossItems.length === 0 ? (
+                <Text style={styles.modalEmpty}>本月暂无损失记录，继续保持。</Text>
+              ) : (
+                <ScrollView style={styles.modalList}>
+                  {lossItems.map((item, idx) => (
+                    <View key={item.date + '_' + idx} style={styles.lossRow}>
+                      <View style={styles.lossRowLeft}>
+                        <Text style={styles.lossDate}>{item.date}</Text>
+                        {item.gameType ? <Text style={styles.lossType}>{item.gameType}</Text> : null}
+                      </View>
+                      <Text style={styles.lossAmount}>-${item.amount}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setShowLossDetail(false)}>
+                <Text style={styles.modalCloseText}>关闭</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </PageContainer>
@@ -275,7 +303,10 @@ const styles = StyleSheet.create({
   statBox: { flex: 1, alignItems: 'center' },
   statNum: { fontSize: 18, fontWeight: 'bold', color: '#2E7D32' },
   statLabel: { fontSize: 11, color: '#aaa', marginTop: 2, textAlign: 'center' },
+  statLabelLink: { fontSize: 11, color: '#2E7D32', fontWeight: 'bold', marginTop: 2, textAlign: 'center' },
+  statActionIcon: { fontSize: 20, lineHeight: 24 },
   statDivider: { width: 1, backgroundColor: '#eee' },
+  pledgeSection: { width: '100%', marginTop: 18, paddingTop: 18, borderTopWidth: 1, borderTopColor: '#F0F0F0', alignItems: 'center' },
   checkedBadge: { backgroundColor: '#E8F5E9', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginTop: 12, alignSelf: 'center' },
   checkedBadgeRed: { backgroundColor: '#FFF1F1' },
   checkedText: { color: '#2E7D32', fontSize: 13 },
@@ -322,4 +353,17 @@ const styles = StyleSheet.create({
   sceneCard: { backgroundColor: '#fff', margin: 16, marginTop: 8, marginBottom: 8, borderRadius: 16, padding: 18, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3 },
   sceneTitle: { fontSize: 18, fontWeight: 'bold', color: '#2E7D32', marginBottom: 8 },
   sceneSub: { fontSize: 13, color: '#666', lineHeight: 20, marginBottom: 10 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalCard: { backgroundColor: '#fff', borderRadius: 16, padding: 20, width: '100%', maxWidth: 380, maxHeight: '75%' },
+  modalTitle: { fontSize: 17, fontWeight: 'bold', color: '#2E7D32', marginBottom: 4, textAlign: 'center' },
+  modalTotal: { fontSize: 13, color: '#888', marginBottom: 12, textAlign: 'center' },
+  modalEmpty: { fontSize: 13, color: '#999', textAlign: 'center', paddingVertical: 24, lineHeight: 20 },
+  modalList: { flexGrow: 0 },
+  lossRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
+  lossRowLeft: { flex: 1, paddingRight: 12 },
+  lossDate: { fontSize: 14, color: '#444' },
+  lossType: { fontSize: 11, color: '#aaa', marginTop: 2 },
+  lossAmount: { fontSize: 15, fontWeight: 'bold', color: '#D32F2F' },
+  modalCloseBtn: { marginTop: 14, backgroundColor: '#2E7D32', borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  modalCloseText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
 });
