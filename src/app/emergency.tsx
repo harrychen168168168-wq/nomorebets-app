@@ -51,7 +51,7 @@ export default function EmergencyPage() {
   const [isAiEligible, setIsAiEligible] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [aiError, setAiError] = useState('');
-  const [aiUsage, setAiUsage] = useState<{ monthlyLimit?: number; monthlyRemaining?: number; addonCreditCentsRemaining?: number } | null>(null);
+  const [aiUsage, setAiUsage] = useState<{ plan?: string; monthlyLimit?: number; monthlyRemaining?: number; addonCreditCentsRemaining?: number } | null>(null);
   const [aiNeedsAddon, setAiNeedsAddon] = useState(false);
   const [aiAddonLoading, setAiAddonLoading] = useState(false);
   const [expandedPhoto, setExpandedPhoto] = useState<number | null>(null);
@@ -254,7 +254,14 @@ export default function EmergencyPage() {
                 {aiMessages.map((msg, i) => <View key={i} style={[styles.chatBubble, msg.role === 'user' ? styles.chatUser : styles.chatAi]}><Text style={[styles.chatText, msg.role === 'user' ? styles.chatUserText : styles.chatAiText]}>{msg.text}</Text></View>)}
                 {aiLoading && <View style={styles.chatAi}><Text style={styles.chatAiText}>正在回复...</Text></View>}
               </ScrollView>
-              {aiUsage ? <View style={styles.aiUsageBox}><Text style={styles.aiUsageText}>本月基础额度剩余：{aiUsage.monthlyRemaining ?? 0}/{aiUsage.monthlyLimit ?? '—'}</Text><Text style={styles.aiUsageText}>加购包余额：${(((aiUsage.addonCreditCentsRemaining ?? 0) / 100).toFixed(2))}</Text></View> : null}
+              {aiUsage ? <View style={styles.aiUsageBox}>{aiUsage.plan === 'lifetime' ? (
+                <Text style={styles.aiUsageText}>本月 AI 倾诉：无限次（终身会员）</Text>
+              ) : (
+                <>
+                  <Text style={styles.aiUsageText}>本月基础额度剩余：{aiUsage.monthlyRemaining ?? 0}/{aiUsage.monthlyLimit ?? '—'}</Text>
+                  <Text style={styles.aiUsageText}>加购包余额：${(((aiUsage.addonCreditCentsRemaining ?? 0) / 100).toFixed(2))}</Text>
+                </>
+              )}</View> : null}
               {aiNeedsAddon ? <TouchableOpacity style={styles.aiAddonBtn} onPress={buyAiAddon} disabled={aiAddonLoading}><Text style={styles.aiAddonBtnText}>{aiAddonLoading ? '购买中...' : '购买 AI 加购包'}</Text></TouchableOpacity> : null}
               {aiError ? <Text style={styles.aiError}>{aiError}</Text> : null}
               <View style={styles.chatInputRow}><TextInput style={styles.chatInput} placeholder="说说你的感受..." value={aiInput} onChangeText={setAiInput} multiline /><TouchableOpacity style={styles.chatSend} onPress={sendAiMessage}><Text style={styles.chatSendText}>发送</Text></TouchableOpacity></View>

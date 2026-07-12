@@ -73,8 +73,10 @@ const config = {
   monthlyProductIds: splitList(process.env.MONTHLY_PRODUCT_IDS),
   annualProductIds: splitList(process.env.ANNUAL_PRODUCT_IDS),
   mutualProductIds: splitList(process.env.MUTUAL_PRODUCT_IDS),
+  lifetimeProductIds: splitList(process.env.LIFETIME_PRODUCT_IDS),
   monthlyAiLimit: readNumber('MONTHLY_AI_LIMIT', 50),
   annualMonthlyAiLimit: readNumber('ANNUAL_MONTHLY_AI_LIMIT', 100),
+  lifetimeAiLimit: readNumber('LIFETIME_AI_LIMIT', 100000),
   addonPacks: parseAddonPacks(),
   globalMonthlyBudgetCents: readNumber('GLOBAL_MONTHLY_BUDGET_CENTS', 500),
   reservedCostCents: readNumber('RESERVED_COST_PER_AI_CALL_CENTS', 1),
@@ -220,10 +222,20 @@ function ensureGlobalUsage(ledger, month) {
 }
 
 function resolvePlan(productId) {
+  if (productId && config.lifetimeProductIds.includes(productId)) return { type: 'lifetime', productId };
   if (productId && config.mutualProductIds.includes(productId)) return { type: 'mutual', productId };
   if (productId && config.annualProductIds.includes(productId)) return { type: 'annual', productId };
   if (productId && config.monthlyProductIds.includes(productId)) return { type: 'monthly', productId };
   return { type: 'unknown', productId: productId || '' };
+}
+
+// Monthly AI quota by plan. Lifetime is effectively unlimited per user (still bounded by the
+// global monthly cost budget), matching the paywall promise of "AI 无限，一辈子".
+function monthlyLimitForPlan(planType) {
+  if (planType === 'monthly') return config.monthlyAiLimit;
+  if (planType === 'annual' || planType === 'mutual') return config.annualMonthlyAiLimit;
+  if (planType === 'lifetime') return config.lifetimeAiLimit;
+  return 0;
 }
 
 async function supabaseRest(pathname) {
@@ -348,7 +360,7 @@ async function verifySharedMembership(appUserId) {
       membership = { product_id: directOwner.productId || ownerPlan.productId || '' };
     }
 
-    if (link.type === 'family' && ownerPlan?.type === 'annual') {
+    if (link.type === 'family' && (ownerPlan?.type === 'annual' || ownerPlan?.type === 'lifetime')) {
       return {
         ok: true,
         reason: 'family_guardian_shared',
@@ -391,7 +403,7 @@ function applyAddonGrants(userUsage, addonGrants) {
 
 function buildUsage(plan, monthUsage, userUsage, globalUsage) {
   const addonCreditCentsRemaining = Math.max(0, userUsage.addonCreditCents || 0);
-  const monthlyLimit = plan.type === 'monthly' ? config.monthlyAiLimit : plan.type === 'annual' || plan.type === 'mutual' ? config.annualMonthlyAiLimit : 0;
+  const monthlyLimit = monthlyLimitForPlan(plan.type);
   return {
     plan: plan.type,
     monthlyLimit,
@@ -413,7 +425,7 @@ async function reserveAiUse(quotaKey, plan, addonGrants) {
 
     applyAddonGrants(userUsage, addonGrants);
 
-    const monthlyLimit = plan.type === 'monthly' ? config.monthlyAiLimit : plan.type === 'annual' || plan.type === 'mutual' ? config.annualMonthlyAiLimit : 0;
+    const monthlyLimit = monthlyLimitForPlan(plan.type);
 
     if (monthlyLimit <= 0) {
       return {
@@ -658,6 +670,7 @@ function handleHealth(res) {
     monthlyAiLimit: config.monthlyAiLimit,
     annualMonthlyAiLimit: config.annualMonthlyAiLimit,
     mutualMonthlyAiLimit: config.annualMonthlyAiLimit,
+    lifetimeAiLimit: config.lifetimeAiLimit,
     useSupabaseAiGroups: config.useSupabaseAiGroups,
     addonPackCount: config.addonPacks.size,
     globalMonthlyBudgetCents: config.globalMonthlyBudgetCents,

@@ -16,7 +16,6 @@ export const GOOGLE_WEB_CLIENT_ID = '';
 
 export const AI_PROXY_URL = 'https://nomorebets-app.onrender.com/ai/chat';
 export const AI_ADDON_10_PRODUCT_ID = 'nomorebets_ai_addon_999';
-export const AI_ADDON_5_PRODUCT_ID = 'nomorebets_ai_addon_499'; // $4.99 冲动小包（待 ASC 建 SKU）
 
 export const PRIVACY_POLICY_URL = 'https://nezha2capital.com/privacy';
 export const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
