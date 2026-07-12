@@ -1,5 +1,6 @@
-import { ANNUAL_PRODUCT_IDS, LIFETIME_LAUNCH_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
+import { ANNUAL_PRODUCT_IDS, LIFETIME_LAUNCH_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, TERMS_URL } from '@/config';
 import PromoCountdown from '@/components/PromoCountdown';
+import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
 import { loadData, saveData } from '@/storage';
 import { configureRevenueCat, customerInfoToSnapshot, getFriendlyPurchaseError } from '@/subscription';
 import { useEffect, useMemo, useState } from 'react';
@@ -64,6 +65,7 @@ function getPlanSubtitle(pkg: PurchasesPackage, fallback: string) {
 
 export default function PaywallModal({ visible, onClose, onSuccess, featureName, defaultPlan = 'LIFETIME', onboardingPrompt = false, monthlyLoss = 0 }: Props) {
   const [packages, setPackages] = useState<PurchasesPackage[]>([]);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [selected, setSelected] = useState<PlanType>('LIFETIME');
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
@@ -342,10 +344,11 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
               <TouchableOpacity onPress={() => Linking.openURL('https://apps.apple.com/account/subscriptions')}><Text style={styles.linkText}>管理订阅</Text></TouchableOpacity>
             </View>
             <View style={styles.linkRow}>
-              <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}><Text style={styles.legalLink}>隐私政策</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowPrivacy(true)}><Text style={styles.legalLink}>隐私政策</Text></TouchableOpacity>
               <Text style={styles.dot}>·</Text>
               <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}><Text style={styles.legalLink}>使用条款</Text></TouchableOpacity>
             </View>
+            <PrivacyPolicyModal visible={showPrivacy} onClose={() => setShowPrivacy(false)} />
             <TouchableOpacity onPress={onClose} style={styles.laterBtn} disabled={purchasing}>
               <Text style={styles.laterText}>暂不订阅，先免费使用</Text>
             </TouchableOpacity>

@@ -1,5 +1,6 @@
 import { useAuth } from '@/auth';
-import { GOOGLE_IOS_CLIENT_ID, PRIVACY_POLICY_URL, TERMS_URL } from '@/config';
+import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
+import { GOOGLE_IOS_CLIENT_ID, TERMS_URL } from '@/config';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import { useEffect, useMemo, useState } from 'react';
@@ -10,6 +11,7 @@ type AuthMode = 'login' | 'register';
 export default function LoginScreen() {
   const { registerWithEmail, signInWithEmailPassword, signInWithApple, signInWithGoogle, requestPasswordReset, confirmPasswordReset } = useAuth();
   const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -267,10 +269,11 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.legalRow}>
-          <TouchableOpacity onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}><Text style={styles.legalLink}>隐私政策</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowPrivacy(true)}><Text style={styles.legalLink}>隐私政策</Text></TouchableOpacity>
           <Text style={styles.legalDivider}>·</Text>
           <TouchableOpacity onPress={() => Linking.openURL(TERMS_URL)}><Text style={styles.legalLink}>使用条款</Text></TouchableOpacity>
         </View>
+        <PrivacyPolicyModal visible={showPrivacy} onClose={() => setShowPrivacy(false)} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

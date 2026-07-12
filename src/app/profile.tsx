@@ -4,7 +4,8 @@ import GuardianSharingPanel from '@/components/GuardianSharingPanel';
 import PageContainer from '@/components/PageContainer';
 import ReminderSettingsCard from '@/components/ReminderSettingsCard';
 import PaywallModal from '@/components/PaywallModal';
-import { PRIVACY_POLICY_URL, SUPPORT_EMAIL, TERMS_URL } from '@/config';
+import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
+import { SUPPORT_EMAIL, TERMS_URL } from '@/config';
 import { configureRevenueCat, customerInfoToSnapshot, formatSubscriptionDate, getFriendlyPurchaseError, getSubscriptionSnapshot, SubscriptionSnapshot } from '@/subscription';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -24,6 +25,7 @@ export default function ProfilePage() {
   const { user, isAdmin, isAdminCandidate, signOut, deleteAccount, unlockAdmin, lockAdmin, updateProfile } = useAuth();
   const router = useRouter();
   const [streak, setStreak] = useState(0);
+  const [showPrivacy, setShowPrivacy] = useState(false);
   const [age, setAge] = useState<number | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -357,8 +359,9 @@ export default function ProfilePage() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>隐私与安全</Text>
           <Text style={styles.cardSub}>管理账号、隐私政策和本地数据。</Text>
-          <TouchableOpacity style={styles.securityBtn} onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}><Text style={styles.securityText}>隐私政策</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.securityBtn} onPress={() => setShowPrivacy(true)}><Text style={styles.securityText}>隐私政策</Text></TouchableOpacity>
           <TouchableOpacity style={styles.securityBtn} onPress={() => Linking.openURL(TERMS_URL)}><Text style={styles.securityText}>使用条款</Text></TouchableOpacity>
+          <PrivacyPolicyModal visible={showPrivacy} onClose={() => setShowPrivacy(false)} />
           {!showDeleteConfirm ? <TouchableOpacity style={styles.securityDangerBtn} onPress={() => setShowDeleteConfirm(true)}><Text style={styles.securityDangerText}>删除账号与本机数据</Text></TouchableOpacity> : (
             <View style={styles.deleteBox}>
               <Text style={styles.dangerWarning}>删除后，本机账号和该账号下的数据会被清除。Apple 订阅需要到 Apple ID 订阅管理里单独取消。</Text>
