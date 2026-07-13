@@ -73,6 +73,11 @@ export default function EmergencyPage() {
   useFocusEffect(useCallback(() => {
     loadData();
     refreshAiEligibility();
+    // Wake the AI proxy early. On render's free tier the service sleeps after idle and the first
+    // request cold-starts for ~50s. Firing a cheap /health ping the moment the urge page opens means
+    // that while the user picks a mood / does the 5-min breathing, the server spins up — so by the
+    // time they actually start AI chat it's usually already warm. Fire-and-forget; errors ignored.
+    if (AI_PROXY_URL) fetch(AI_PROXY_URL.replace(/\/ai\/chat$/, '/health')).catch(() => {});
   }, [refreshAiEligibility]));
 
   useEffect(() => {
