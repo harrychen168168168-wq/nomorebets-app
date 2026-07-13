@@ -14,7 +14,7 @@ export const ADMIN_LOCAL_PIN = '168168';
 export const GOOGLE_IOS_CLIENT_ID = '564022564634-kvotavoqdnqaf9f98arrom80be6qvi34.apps.googleusercontent.com';
 export const GOOGLE_WEB_CLIENT_ID = '';
 
-export const AI_PROXY_URL = 'https://nomorebets-app.onrender.com/ai/chat';
+export const AI_PROXY_URL = 'https://nomorebets-app-production.up.railway.app/ai/chat';
 export const AI_ADDON_10_PRODUCT_ID = 'nomorebets_ai_addon_999';
 
 export const PRIVACY_POLICY_URL = 'https://nezha2capital.com/privacy';
