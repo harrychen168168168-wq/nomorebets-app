@@ -84,6 +84,10 @@ const config = {
   maxInputChars: readNumber('MAX_INPUT_CHARS', 1800),
   maxMessages: readNumber('MAX_MESSAGES', 12),
   appSecret: process.env.APP_PROXY_SHARED_SECRET || '',
+  // Dashboard-only key, deliberately separate from appSecret: appSecret also gates /ai/chat with an
+  // x-app-secret header the shipped app does NOT send — setting it would kill AI for every live user.
+  // This key unlocks only /admin/usage and touches nothing else.
+  adminKey: process.env.ADMIN_DASHBOARD_KEY || '',
   usageStorePath: process.env.USAGE_STORE_PATH || './data/usage-ledger.json',
   supabaseUrl: process.env.SUPABASE_URL || '',
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
@@ -662,17 +666,17 @@ async function handleChat(req, res) {
 
 // Owner dashboard: "where did this month's AI budget go?" in one URL.
 // Two deliberate constraints:
-//  1. Requires APP_PROXY_SHARED_SECRET. If it isn't set the route stays OFF (404) rather than
-//     exposing spend data to anyone who guesses the path.
+//  1. Requires ADMIN_DASHBOARD_KEY (dashboard-only; NOT appSecret — see config note). If it isn't
+//     set the route stays OFF (404) rather than exposing spend data to anyone who guesses the path.
 //  2. Aggregate numbers only — never per-user rows. In a gambling-recovery app the user list is
 //     itself sensitive, and a dashboard is not worth leaking it.
 async function handleAdminUsage(req, res, url) {
-  if (!config.appSecret) {
+  if (!config.adminKey) {
     json(res, 404, { error: 'not_found' });
     return;
   }
-  const key = url.searchParams.get('key') || req.headers['x-app-secret'];
-  if (key !== config.appSecret) {
+  const key = url.searchParams.get('key') || req.headers['x-admin-key'];
+  if (key !== config.adminKey) {
     json(res, 401, { error: 'unauthorized' });
     return;
   }
