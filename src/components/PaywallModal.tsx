@@ -223,8 +223,8 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
               {featureName
                 ? '“' + featureName + '”需要有效订阅。'
                 : onboardingPrompt && monthlyLoss > 0
-                  ? '你每月大约输 $' + monthlyLoss.toLocaleString() + '。给自己一个能真正守住它的计划——头 7 天免费。'
-                  : '选择你的方案，头 7 天免费。'}
+                  ? '你每月大约输 $' + monthlyLoss.toLocaleString() + '。给自己一个能真正守住它的计划——订阅方案头 7 天免费。'
+                  : '选择你的方案。订阅方案头 7 天免费，买断一次付清、永久拥有。'}
             </Text>
 
             {onboardingPrompt ? (

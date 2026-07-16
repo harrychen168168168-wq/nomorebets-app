@@ -660,6 +660,58 @@ async function handleChat(req, res) {
   }
 }
 
+// Owner dashboard: "where did this month's AI budget go?" in one URL.
+// Two deliberate constraints:
+//  1. Requires APP_PROXY_SHARED_SECRET. If it isn't set the route stays OFF (404) rather than
+//     exposing spend data to anyone who guesses the path.
+//  2. Aggregate numbers only — never per-user rows. In a gambling-recovery app the user list is
+//     itself sensitive, and a dashboard is not worth leaking it.
+async function handleAdminUsage(req, res, url) {
+  if (!config.appSecret) {
+    json(res, 404, { error: 'not_found' });
+    return;
+  }
+  const key = url.searchParams.get('key') || req.headers['x-app-secret'];
+  if (key !== config.appSecret) {
+    json(res, 401, { error: 'unauthorized' });
+    return;
+  }
+
+  const month = todayMonth();
+  const ledger = await readLedger();
+  const globalUsage = ledger.global?.[month] || { calls: 0, reservedCents: 0 };
+
+  let activeUsers = 0;
+  let baseCalls = 0;
+  let addonCalls = 0;
+  let addonCreditOutstandingCents = 0;
+  for (const user of Object.values(ledger.users || {})) {
+    addonCreditOutstandingCents += user.addonCreditCents || 0;
+    const monthUsage = user.monthly?.[month];
+    if (!monthUsage) continue;
+    const used = (monthUsage.baseCalls || 0) + (monthUsage.addonCalls || 0);
+    if (used > 0) activeUsers += 1;
+    baseCalls += monthUsage.baseCalls || 0;
+    addonCalls += monthUsage.addonCalls || 0;
+  }
+
+  const budgetCents = config.globalMonthlyBudgetCents;
+  const spentCents = globalUsage.reservedCents || 0;
+  json(res, 200, {
+    month,
+    activeUsers,
+    calls: { base: baseCalls, addon: addonCalls, total: baseCalls + addonCalls },
+    budget: {
+      cents: budgetCents,
+      spentCents,
+      remainingCents: Math.max(0, budgetCents - spentCents),
+      usedPct: budgetCents > 0 ? Math.round((spentCents / budgetCents) * 100) : 0,
+    },
+    addonCreditOutstandingCents,
+    usersEverSeen: Object.keys(ledger.users || {}).length,
+  });
+}
+
 function handleHealth(res) {
   json(res, 200, {
     ok: true,
@@ -725,6 +777,10 @@ const server = http.createServer(async (req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/health') {
     handleHealth(res);
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/admin/usage') {
+    await handleAdminUsage(req, res, url);
     return;
   }
   if (req.method === 'GET' && url.pathname === '/access') {

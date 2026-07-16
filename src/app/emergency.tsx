@@ -3,6 +3,7 @@ import BreathingTimer from '@/components/BreathingTimer';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
+import { maybeAskReview, REVIEW_URGE_RESISTED } from '@/review';
 import { isCommunityConfigured, listGuardianLinks } from '@/community';
 import { AI_ADDON_10_PRODUCT_ID, AI_PROXY_URL } from '@/config';
 import { configureRevenueCat, getSubscriptionSnapshot } from '@/subscription';
@@ -185,7 +186,7 @@ export default function EmergencyPage() {
                 <>
                   <Text style={styles.modalTitle}>为自己骄傲</Text>
                   <Text style={styles.modalText}>你刚刚做了一件很了不起的事。冲动来了，你没有屈服。这是真正的力量。</Text>
-                  <TouchableOpacity style={styles.modalBtn} onPress={() => setShowModal(false)}><Text style={styles.modalBtnText}>我做到了</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.modalBtn} onPress={() => { setShowModal(false); maybeAskReview(REVIEW_URGE_RESISTED); }}><Text style={styles.modalBtnText}>我做到了</Text></TouchableOpacity>
                 </>
               ) : (
                 <>

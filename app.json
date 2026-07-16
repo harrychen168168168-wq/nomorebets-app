@@ -48,7 +48,8 @@
           "iosUrlScheme": "com.googleusercontent.apps.564022564634-kvotavoqdnqaf9f98arrom80be6qvi34"
         }
       ],
-      "./plugins/withModularHeaders"
+      "./plugins/withModularHeaders",
+      "@sentry/react-native"
     ],
     "experiments": {
       "typedRoutes": true,

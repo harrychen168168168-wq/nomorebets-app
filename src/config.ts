@@ -17,6 +17,11 @@ export const GOOGLE_WEB_CLIENT_ID = '';
 export const AI_PROXY_URL = 'https://nomorebets-app-production.up.railway.app/ai/chat';
 export const AI_ADDON_10_PRODUCT_ID = 'nomorebets_ai_addon_999';
 
+// Crash/error reporting. Empty = disabled (no init, zero overhead), so shipping without it is safe.
+// To turn it on: create a project at sentry.io → copy its DSN → paste it here. Because this is read
+// at JS runtime, an OTA `eas update` is enough to switch it on — no new build needed.
+export const SENTRY_DSN = '';
+
 export const PRIVACY_POLICY_URL = 'https://nezha2capital.com/privacy';
 export const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 export const SUPPORT_EMAIL = 'nomorebets@nezha2capital.com';

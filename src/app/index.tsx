@@ -3,6 +3,7 @@ import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
 import PlanTodayCard from '@/components/PlanTodayCard';
 import { getReminderSettings } from '@/notifications';
+import { maybeAskReview, REVIEW_STREAK_7 } from '@/review';
 import { getSubscriptionSnapshot } from '@/subscription';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
@@ -100,7 +101,11 @@ export default function HomePage() {
     setMonthlyLoss(state.monthlyLoss);
     setTodayChecked(true);
     setTodayGambled(false);
-    Alert.alert('承诺已记录 🌱', '你已连续坚持 ' + result.newStreak + ' 天。每一天都算数，明天再来一次。');
+    // Ask for a rating only after they dismiss the celebration, and only once they've earned a real
+    // week — a 7-day streak is this app's peak-pride moment, which is when a rating ask is welcome.
+    Alert.alert('承诺已记录 🌱', '你已连续坚持 ' + result.newStreak + ' 天。每一天都算数，明天再来一次。', [
+      { text: '好', onPress: () => { if (result.newStreak >= 7) maybeAskReview(REVIEW_STREAK_7); } },
+    ]);
   }
 
   async function handleUseProtection() {

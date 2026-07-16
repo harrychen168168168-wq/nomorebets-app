@@ -3,7 +3,8 @@ import AnimatedSplash from '@/components/AnimatedSplash';
 import OnboardingFlow from '@/components/onboarding/OnboardingFlow';
 import { AuthProvider, useAuth } from '@/auth';
 import { supabaseInitError } from '@/supabase';
-import { SUPPORT_EMAIL } from '@/config';
+import { SENTRY_DSN, SUPPORT_EMAIL } from '@/config';
+import * as Sentry from '@sentry/react-native';
 import { configureRevenueCat } from '@/subscription';
 import { syncReminders } from '@/notifications';
 import * as Notifications from 'expo-notifications';
@@ -11,6 +12,17 @@ import * as SplashScreen from 'expo-splash-screen';
 import { Tabs } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, AppState, Text, View } from 'react-native';
+
+// Crash reporting, off unless a DSN is configured. This app holds a user's gambling-recovery record
+// and private AI conversations, and the privacy policy only covers "崩溃日志" — so we report the error
+// itself and nothing else: no PII, no performance traces that would carry request data off-device.
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    sendDefaultPii: false,
+    tracesSampleRate: 0,
+  });
+}
 
 // Keep the native splash up until our animated splash takes over; safety-hide after 4s so a
 // failure to mount the animated splash can never leave the app stuck on the native splash.
