@@ -1,5 +1,5 @@
 import { useAuth } from '@/auth';
-import { isCommunityConfigured, listOpenReports, listPendingStories, moderateStory, PublicStory, resolveReport, sanctionUser, SanctionLevel } from '@/community';
+import { isCommunityConfigured, listOpenReports, listPendingStories, moderateStory, PublicStory, resolveReport, sanctionStoryAuthor, SanctionLevel } from '@/community';
 import PageContainer from '@/components/PageContainer';
 import { APP_VERSION } from '@/config';
 import { DailyRecord, loadData as loadStoredData, readDailyRecords } from '@/storage';
@@ -87,10 +87,6 @@ export default function AdminPage() {
   ];
 
   function confirmSanction(story: PublicStory, level: SanctionLevel, label: string) {
-    if (!story.authorUserId) {
-      Alert.alert('无法限制', '这条故事没有作者 ID（可能是 AI 或系统内容）。');
-      return;
-    }
     Alert.alert('限制该用户', '确定对作者执行“' + label + '”？', [
       { text: '取消', style: 'cancel' },
       {
@@ -98,7 +94,7 @@ export default function AdminPage() {
         style: 'destructive',
         onPress: async () => {
           try {
-            await sanctionUser(story.authorUserId as string, level, '违规公开故事：' + story.title, user?.id || 'admin');
+            await sanctionStoryAuthor(story.id, level, '违规公开故事：' + story.title, user?.id || 'admin');
             await load();
             Alert.alert('已处理', '已对该用户执行：' + label + '。被限制用户将无法再发布公开故事。');
           } catch (error: any) {

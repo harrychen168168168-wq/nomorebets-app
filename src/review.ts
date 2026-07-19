@@ -8,8 +8,11 @@ export async function maybeAskReview(key: string) {
   try {
     if (await loadData(key)) return;
     if (!(await StoreReview.hasAction())) return;
-    await saveData(key, '1');
+    // Persist only after the prompt actually went up: if requestReview throws, the outer catch
+    // swallows it, and burning the flag first would spend one of the ~3 yearly asks on a prompt
+    // the user never saw.
     await StoreReview.requestReview();
+    await saveData(key, '1');
   } catch {
     // A rating prompt must never break the flow it's celebrating.
   }

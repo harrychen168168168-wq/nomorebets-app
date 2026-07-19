@@ -18,8 +18,9 @@ export const AI_PROXY_URL = 'https://nomorebets-app-production.up.railway.app/ai
 export const AI_ADDON_10_PRODUCT_ID = 'nomorebets_ai_addon_999';
 
 // Crash/error reporting. Empty = disabled (no init, zero overhead), so shipping without it is safe.
-// To turn it on: create a project at sentry.io → copy its DSN → paste it here. Because this is read
-// at JS runtime, an OTA `eas update` is enough to switch it on — no new build needed.
+// To turn it on: create a project at sentry.io → copy its DSN → paste it here.
+// This is baked into the JS bundle at build time. OTA could swap it without a new build, but only
+// for builds that carry the update channel — set this BEFORE triggering a build, not after.
 export const SENTRY_DSN = '';
 
 export const PRIVACY_POLICY_URL = 'https://nezha2capital.com/privacy';

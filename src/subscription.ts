@@ -1,6 +1,10 @@
 import { Platform } from 'react-native';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
-import { AI_PROXY_URL, ANNUAL_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, REVENUECAT_ENTITLEMENT_ID, REVENUECAT_IOS_KEY } from './config';
+import { AI_PROXY_URL, ANNUAL_PRODUCT_IDS, LIFETIME_LAUNCH_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, REVENUECAT_ENTITLEMENT_ID, REVENUECAT_IOS_KEY } from './config';
+
+// Both buyout SKUs unlock the same thing. Keep them together so the $79.99 promo is matched by the
+// authoritative list rather than by the substring guess further down in inferPlanType.
+const LIFETIME_IDS = [...LIFETIME_PRODUCT_IDS, ...LIFETIME_LAUNCH_PRODUCT_IDS];
 
 const FALLBACK_ENTITLEMENT_IDS = ['pro', 'premium', 'NO_MORE_BETS_PRO'];
 const ENTITLEMENT_IDS = Array.from(new Set([REVENUECAT_ENTITLEMENT_ID, ...FALLBACK_ENTITLEMENT_IDS].filter(Boolean)));
@@ -59,7 +63,7 @@ export function getSubscriptionManageUrl(customerInfo?: CustomerInfo | null) {
 export function inferPlanType(productIdentifier?: string | null): PlanType {
   const id = normalizeId(productIdentifier);
   if (!id) return 'none';
-  if (matchesProductId(id, LIFETIME_PRODUCT_IDS)) return 'lifetime';
+  if (matchesProductId(id, LIFETIME_IDS)) return 'lifetime';
   if (matchesProductId(id, MUTUAL_PRODUCT_IDS)) return 'mutual';
   if (matchesProductId(id, ANNUAL_PRODUCT_IDS)) return 'annual';
   if (matchesProductId(id, MONTHLY_PRODUCT_IDS)) return 'monthly';
@@ -85,17 +89,33 @@ function collectProductIds(customerInfo: CustomerInfo, entitlement: any) {
   return Array.from(ids);
 }
 
-function resolvePlanFromProducts(productIds: string[], fallbackProductId?: string | null): { planType: PlanType; productIdentifier?: string } {
-  const lifetime = productIds.find((id) => matchesProductId(id, LIFETIME_PRODUCT_IDS) || inferPlanType(id) === 'lifetime');
-  if (lifetime) return { planType: 'lifetime', productIdentifier: lifetime };
-  const mutual = productIds.find((id) => matchesProductId(id, MUTUAL_PRODUCT_IDS) || inferPlanType(id) === 'mutual');
-  if (mutual) return { planType: 'mutual', productIdentifier: mutual };
-  const annual = productIds.find((id) => matchesProductId(id, ANNUAL_PRODUCT_IDS) || inferPlanType(id) === 'annual');
-  if (annual) return { planType: 'annual', productIdentifier: annual };
-  const monthly = productIds.find((id) => matchesProductId(id, MONTHLY_PRODUCT_IDS) || inferPlanType(id) === 'monthly');
-  if (monthly) return { planType: 'monthly', productIdentifier: monthly };
-  const fallbackPlan = inferPlanType(fallbackProductId);
-  return { planType: fallbackPlan, productIdentifier: fallbackProductId || productIds[0] };
+// Resolve the tier from what the customer actually holds RIGHT NOW.
+//
+// Deliberately does NOT scan allPurchasedProductIdentifiers: the SDK documents that field as
+// "Set of purchased skus, active and inactive", so refunded, revoked and long-expired purchases
+// stay in it forever. Scanning it let a lapsed yearly (or a refunded buyout) outrank the plan the
+// user actually holds, which mislabelled the card, hid the upgrade CTA, and handed out
+// annual/lifetime-only guardian invites for the price of a monthly.
+function resolvePlanFromCustomerInfo(customerInfo: CustomerInfo, entitlement: any): { planType: PlanType; productIdentifier?: string } {
+  // The buyout is non-consumable, so it never appears in activeSubscriptions and has to come from
+  // the transaction list. nonSubscriptionTransactions (unlike allPurchasedProductIdentifiers) drops
+  // refunded/revoked transactions, so ownership here is real. It outranks any subscription.
+  const owned = ((customerInfo as any)?.nonSubscriptionTransactions || [])
+    .map((transaction: any) => transaction?.productIdentifier)
+    .find((id: string) => matchesProductId(id, LIFETIME_IDS));
+  if (owned) return { planType: 'lifetime', productIdentifier: owned };
+
+  // Otherwise the active entitlement's own product is the single source of truth.
+  const activeId = entitlement?.productIdentifier ?? entitlement?.product_identifier ?? entitlement?.productId ?? entitlement?.product_id;
+  const activePlan = inferPlanType(activeId);
+  if (activePlan !== 'unknown' && activePlan !== 'none') {
+    return { planType: activePlan, productIdentifier: activeId };
+  }
+
+  // Unrecognised product (e.g. a RevenueCat dashboard promo grant, whose identifier looks like
+  // "rc_promo_<entitlement>_weekly"). Access stays open — isPro is decided by the entitlement, not
+  // here — but tier-gated perks stay shut rather than falling back to a purchase-history guess.
+  return { planType: activeId ? 'unknown' : 'none', productIdentifier: activeId };
 }
 
 export async function getSubscriptionSnapshot(): Promise<SubscriptionSnapshot> {
@@ -127,9 +147,8 @@ export async function getSubscriptionSnapshot(): Promise<SubscriptionSnapshot> {
 export function customerInfoToSnapshot(customerInfo: CustomerInfo): SubscriptionSnapshot {
   const active = getActiveEntitlement(customerInfo);
   const entitlement: any = active?.entitlement;
-  const fallbackProductId = entitlement?.productIdentifier ?? entitlement?.product_identifier ?? entitlement?.productId ?? entitlement?.product_id;
   const productIds = collectProductIds(customerInfo, entitlement);
-  const resolved = resolvePlanFromProducts(productIds, fallbackProductId);
+  const resolved = resolvePlanFromCustomerInfo(customerInfo, entitlement);
   return {
     isPro: !!active,
     activeEntitlementId: active?.id,

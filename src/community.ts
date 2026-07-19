@@ -218,6 +218,12 @@ export async function sanctionUser(userId: string, level: SanctionLevel, reason:
   await callFunction('community-admin', { action: 'sanctionUser', userId, level, reason, adminUserId }, true);
 }
 
+// Sanction by story instead of by author id: the server looks the author up itself, so moderation
+// keeps working once the pending-story payload stops exposing author_user_id for anonymous posts.
+export async function sanctionStoryAuthor(storyId: string, level: SanctionLevel, reason: string, adminUserId: string) {
+  await callFunction('community-admin', { action: 'sanctionStoryAuthor', storyId, level, reason, adminUserId }, true);
+}
+
 export async function createGuardianInvite(ownerUserId: string, type: GuardianRelationshipType) {
   const data = await callFunction('guardian', { action: 'createInvite', userId: ownerUserId, type });
   return data.invite as InviteLink;

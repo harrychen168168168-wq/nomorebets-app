@@ -335,8 +335,12 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
               </View>
             )}
 
+            {/* The buyout is a one-time non-consumable: no trial, no renewal. Showing the
+                auto-renew disclosure on it states billing behaviour that does not apply. */}
             <Text style={styles.disclaimer}>
-              付款通过 Apple ID 处理。试用结束后会自动续订，除非在当前周期结束前至少 24 小时取消。删除 App 不会自动取消 Apple 订阅。
+              {selected === 'LIFETIME'
+                ? '付款通过 Apple ID 处理。终身会员是一次性买断，付一次永久拥有，不会自动续订、也不会再扣费。'
+                : '付款通过 Apple ID 处理。试用结束后会自动续订，除非在当前周期结束前至少 24 小时取消。删除 App 不会自动取消 Apple 订阅。'}
             </Text>
             <View style={styles.linkRow}>
               <TouchableOpacity onPress={handleRestore} disabled={purchasing}><Text style={styles.linkText}>恢复购买</Text></TouchableOpacity>

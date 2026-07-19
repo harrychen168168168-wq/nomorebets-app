@@ -57,8 +57,18 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
-    if (action === 'sanctionUser') {
-      const userId = String(body.userId || '');
+    // sanctionStoryAuthor resolves the author from the story row server-side, so the client never
+    // needs author_user_id in the list payload — that is what lets listPendingStories stop handing
+    // out the author of an anonymous story. sanctionUser is kept alive for already-shipped bundles.
+    if (action === 'sanctionUser' || action === 'sanctionStoryAuthor') {
+      let userId = String(body.userId || '');
+      if (action === 'sanctionStoryAuthor') {
+        const storyId = String(body.storyId || '');
+        if (!storyId) return json({ error: 'missing_story_id' }, 400);
+        const stories = await rest('public_stories?select=author_user_id&id=eq.' + encodeURIComponent(storyId) + '&limit=1');
+        userId = String(stories?.[0]?.author_user_id || '');
+        if (!userId) return json({ error: 'story_has_no_author' }, 404);
+      }
       const level = String(body.level || '');
       const reason = String(body.reason || '');
       if (!userId || !['warning', 'mute_7d', 'mute_30d', 'blocked'].includes(level) || !reason) return json({ error: 'invalid_sanction' }, 400);

@@ -43,6 +43,29 @@ workflows:
         script: |
           npx expo prebuild --platform ios --clean
 
+      # The OTA channel lives in app.json (updates.requestHeaders) and is only written into
+      # Expo.plist by prebuild, which cannot run on Windows — so this is the first point where it
+      # can be checked at all. Without the header the build silently ships unable to ever receive
+      # an EAS Update, which is exactly how 1.1.0 (build 30) went out. Fail loudly instead.
+      - name: Assert OTA channel baked into Expo.plist
+        script: |
+          set -e
+          PLIST=$(find ios -name Expo.plist | head -1)
+          if [ -z "$PLIST" ]; then echo "FAIL: Expo.plist not found after prebuild"; exit 1; fi
+          echo "Expo.plist -> $PLIST"
+          plutil -convert json -o - "$PLIST" | node -e '
+            let s = "";
+            process.stdin.on("data", (d) => (s += d)).on("end", () => {
+              const channel = (JSON.parse(s).EXUpdatesRequestHeaders || {})["expo-channel-name"];
+              console.log("expo-channel-name =", JSON.stringify(channel));
+              if (channel !== "production") {
+                console.error("FAIL: OTA channel missing/wrong — this build could never receive an EAS Update.");
+                process.exit(1);
+              }
+              console.log("OK: OTA channel baked in.");
+            });
+          '
+
       - name: Install CocoaPods
         script: |
           cd ios

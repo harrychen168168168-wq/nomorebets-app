@@ -274,7 +274,9 @@ export default function ProfilePage() {
           {subscription?.error && !isPro ? <Text style={styles.subscriptionWarn}>{subscription.error}</Text> : null}
           <View style={styles.subscriptionActions}>
             {!isPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => setShowPaywall(true)}><Text style={styles.subscriptionPrimaryText}>查看会员方案</Text></TouchableOpacity>}
-            {isMonthlyPro && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => setShowPaywall(true)}><Text style={styles.subscriptionPrimaryText}>升级家庭守护版</Text></TouchableOpacity>}
+            {/* Every paying tier below lifetime needs a way back into the paywall — annual/mutual
+                subscribers previously had none, so there was no in-app path to the buyout. */}
+            {isPro && !isLifetime && <TouchableOpacity style={styles.subscriptionPrimary} onPress={() => setShowPaywall(true)}><Text style={styles.subscriptionPrimaryText}>{isMonthlyPro ? '升级家庭守护版' : '升级或更换方案'}</Text></TouchableOpacity>}
             <TouchableOpacity style={styles.subscriptionSecondary} onPress={handleRestorePurchase} disabled={restoreLoading}>{restoreLoading ? <ActivityIndicator color="#2E7D32" /> : <Text style={styles.subscriptionSecondaryText}>恢复购买</Text>}</TouchableOpacity>
           </View>
         </View>
