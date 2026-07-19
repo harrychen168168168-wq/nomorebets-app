@@ -19,6 +19,14 @@ workflows:
         EXPO_NO_TELEMETRY: "1"
         APP_IDENTIFIER: "com.nomorebets.app"
         APPLE_TEAM_ID: "SK2FKVF4KW"
+        # Sentry's source-map upload needs SENTRY_AUTH_TOKEN. Without one, sentry-cli fails and
+        # node_modules/@sentry/react-native/scripts/sentry-xcode.sh sets exitCode=1, which fails the
+        # whole build — SENTRY_ALLOW_FAILURE is named in that script's error text but never actually
+        # implemented, so it is not an escape hatch. Crash reporting itself works fine with upload
+        # off; only the stack traces stay minified instead of pointing at src/... file:line.
+        # To enable: add SENTRY_AUTH_TOKEN to the nomorebets_secrets group, add SENTRY_ORG
+        # (nezha2-capital-inc) and SENTRY_PROJECT (the project slug), then set this to "false".
+        SENTRY_DISABLE_AUTO_UPLOAD: "true"
       ios_signing:
         provisioning_profiles:
           - "NoMoreBets_AppStore_AppleSignIn"

@@ -21,7 +21,7 @@ export const AI_ADDON_10_PRODUCT_ID = 'nomorebets_ai_addon_999';
 // To turn it on: create a project at sentry.io → copy its DSN → paste it here.
 // This is baked into the JS bundle at build time. OTA could swap it without a new build, but only
 // for builds that carry the update channel — set this BEFORE triggering a build, not after.
-export const SENTRY_DSN = '';
+export const SENTRY_DSN = 'https://7dbc0c3ab83f88d5810d03a4efaa8a51@o4511764605698048.ingest.us.sentry.io/4511764619001856';
 
 export const PRIVACY_POLICY_URL = 'https://nezha2capital.com/privacy';
 export const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
