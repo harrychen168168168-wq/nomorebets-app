@@ -1,3 +1,4 @@
+import { resolveHasAccess } from '@/access';
 import { useAuth } from '@/auth';
 import { buildStoryDraftFromRecord, containsSelfHarm, isCommunityConfigured, pushMyGuardianStatus, submitPublicStory } from '@/community';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
@@ -63,8 +64,10 @@ export default function RecordsPage() {
 
   useFocusEffect(useCallback(() => {
     refreshRecords();
-    getSubscriptionSnapshot().then((s) => setIsPro(s.isPro)).catch(() => {});
-  }, [refreshRecords]));
+    // Guardian members ride on their payer's plan — resolveHasAccess keeps the re-convert paywall
+    // from firing at someone whose family already bought them access.
+    resolveHasAccess(user?.id).then(setIsPro).catch(() => {});
+  }, [refreshRecords, user?.id]));
 
   useEffect(() => {
     if (params.mode === 'relapse') {

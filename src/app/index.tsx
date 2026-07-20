@@ -1,3 +1,5 @@
+import { resolveHasAccess } from '@/access';
+import { useAuth } from '@/auth';
 import HomeCompanionStories from '@/components/HomeCompanionStories';
 import PageContainer from '@/components/PageContainer';
 import PaywallModal from '@/components/PaywallModal';
@@ -46,6 +48,7 @@ function lossEquivalents(amount: number) {
 }
 
 export default function HomePage() {
+  const { user } = useAuth();
   const router = useRouter();
   const [streak, setStreak] = useState(0);
   const [monthlyDays, setMonthlyDays] = useState(0);
@@ -72,7 +75,9 @@ export default function HomePage() {
         setMonthlyLoss(state.monthlyLoss);
         setTodayGambled(state.todayGambled);
         const snap = await getSubscriptionSnapshot();
-        const pro = snap.isPro;
+        // Guardian members are covered by their payer's plan; without this they get one protection
+        // card and a re-convert paywall aimed at someone whose family already paid for them.
+        const pro = await resolveHasAccess(user?.id, snap);
         setIsPro(pro);
         const prot = await getProtectionState(pro ? 3 : 1);
         setProtectionAvailable(prot.available);
@@ -81,7 +86,7 @@ export default function HomePage() {
         if (!pro) maybeReconvert(state.streak);
       };
       init();
-    }, [])
+    }, [user?.id])
   );
 
   useEffect(() => {

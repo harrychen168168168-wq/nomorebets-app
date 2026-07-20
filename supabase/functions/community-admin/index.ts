@@ -14,12 +14,20 @@ Deno.serve(async (req) => {
     const adminUserId = admin.userId || String(body.adminUserId || 'admin');
 
     if (action === 'listPendingStories') {
-      const rows = await rest('public_stories?select=*&status=eq.pending&order=created_at.asc&limit=100');
+      // Explicit column list, deliberately WITHOUT author_user_id. `select=*` handed the author of
+      // every anonymous story to the moderation screen, so display_mode='anonymous' was anonymous
+      // to other users but not to the admin. Moderation does not need the id: sanctionStoryAuthor
+      // resolves the author server-side from the story row.
+      const columns = 'id,source_record_date,display_mode,display_name,gambling_type,title,excerpt,body,status,source,created_at,published_at,reviewed_at,reviewed_by,rejection_reason';
+      const rows = await rest('public_stories?select=' + columns + '&status=eq.pending&order=created_at.asc&limit=100');
       return json({ stories: rows });
     }
 
     if (action === 'listOpenReports') {
-      const rows = await rest('story_reports?select=*&status=eq.open&order=created_at.asc&limit=100');
+      // Same reasoning as above: the moderation UI renders reason/story/detail and never the
+      // reporter, so shipping reporter_user_id to a client only creates exposure. If repeat-reporter
+      // detection is wanted later it belongs server-side, not as ids handed to the device.
+      const rows = await rest('story_reports?select=id,story_id,reason,detail,status,created_at&status=eq.open&order=created_at.asc&limit=100');
       return json({ reports: rows });
     }
 

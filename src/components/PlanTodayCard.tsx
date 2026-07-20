@@ -1,3 +1,5 @@
+import { resolveHasAccess } from '@/access';
+import { useAuth } from '@/auth';
 import PaywallModal from '@/components/PaywallModal';
 import { getPlanDay, PLAN_DAYS } from '@/planTasks';
 import { getTodayString, loadData, saveData } from '@/storage';
@@ -13,6 +15,7 @@ import { Modal, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 const FREE_PREVIEW_DAYS = 3;
 
 export default function PlanTodayCard() {
+  const { user } = useAuth();
   const [day, setDay] = useState(1);
   const [isPro, setIsPro] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -40,16 +43,19 @@ export default function PlanTodayCard() {
           await saveData('planLastAdvanceDate', today);
         }
         const rawStatus = await loadData('planTaskStatus');
+        // An invited guardian member has no subscription of their own but their payer's plan covers
+        // them — without this they hit the day-4 lock like a free user.
+        const access = await resolveHasAccess(user?.id, snap);
         if (!active) return;
         setDay(progress);
-        setIsPro(snap.isPro);
+        setIsPro(access);
         setStatusMap(rawStatus ? JSON.parse(rawStatus) : {});
         setLoaded(true);
       })();
       return () => {
         active = false;
       };
-    }, [])
+    }, [user?.id])
   );
 
   async function markStatus(next: 'done' | 'need_time') {

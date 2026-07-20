@@ -3,6 +3,7 @@ import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import GuardianSharingPanel from '@/components/GuardianSharingPanel';
 import PageContainer from '@/components/PageContainer';
 import ReminderSettingsCard from '@/components/ReminderSettingsCard';
+import { resolveHasAccess } from '@/access';
 import PaywallModal from '@/components/PaywallModal';
 import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
 import { SUPPORT_EMAIL, TERMS_URL } from '@/config';
@@ -35,6 +36,7 @@ export default function ProfilePage() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionSnapshot | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState(false);
   const [adminPin, setAdminPin] = useState('');
   const [newContactName, setNewContactName] = useState('');
@@ -80,6 +82,10 @@ export default function ProfilePage() {
     setSubscriptionLoading(true);
     const snapshot = await getSubscriptionSnapshot();
     setSubscription(snapshot);
+    // Two different questions, deliberately kept apart: `subscription` answers "did YOU buy
+    // something" and drives the plan card, while hasAccess answers "may you use the paid features"
+    // and is also true for an invited guardian member riding on their payer's plan.
+    setHasAccess(await resolveHasAccess(user?.id, snapshot));
     setSubscriptionLoading(false);
   }
 
@@ -116,7 +122,7 @@ export default function ProfilePage() {
   }
 
   function requirePro() {
-    if (isPro) return true;
+    if (hasAccess) return true;
     setShowPaywall(true);
     return false;
   }
@@ -128,19 +134,19 @@ export default function ProfilePage() {
   }
 
   function startAddContact() {
-    if (!isPro && contacts.length >= FREE_CONTACT_LIMIT) { setShowPaywall(true); return; }
+    if (!hasAccess && contacts.length >= FREE_CONTACT_LIMIT) { setShowPaywall(true); return; }
     setActiveSection('contact');
   }
 
   function startAddGoal() {
-    if (!isPro && goals.length >= FREE_GOAL_LIMIT) { setShowPaywall(true); return; }
+    if (!hasAccess && goals.length >= FREE_GOAL_LIMIT) { setShowPaywall(true); return; }
     setActiveSection('goal');
   }
 
   async function saveContact() {
     if (!newContactName.trim()) return;
-    if (!isPro && contacts.length >= FREE_CONTACT_LIMIT) { setShowPaywall(true); return; }
-    const newContact: Contact = { name: newContactName.trim(), relation: newContactRelation || '重要的人', phone: newContactPhone.trim(), photo: isPro ? newContactPhoto : '' };
+    if (!hasAccess && contacts.length >= FREE_CONTACT_LIMIT) { setShowPaywall(true); return; }
+    const newContact: Contact = { name: newContactName.trim(), relation: newContactRelation || '重要的人', phone: newContactPhone.trim(), photo: hasAccess ? newContactPhoto : '' };
     const updated = [...contacts, newContact];
     await saveStoredData('importantContacts', JSON.stringify(updated));
     setContacts(updated);
@@ -159,7 +165,7 @@ export default function ProfilePage() {
 
   async function saveGoal() {
     if (!newGoalTitle.trim()) return;
-    if (!isPro && goals.length >= FREE_GOAL_LIMIT) { setShowPaywall(true); return; }
+    if (!hasAccess && goals.length >= FREE_GOAL_LIMIT) { setShowPaywall(true); return; }
     const newGoal: Goal = { title: newGoalTitle.trim(), target: Number(newGoalTarget) || 0, current: Number(newGoalCurrent) || 0, deadline: newGoalDeadline.trim() };
     const updated = [...goals, newGoal];
     await saveStoredData('myGoals', JSON.stringify(updated));
@@ -305,7 +311,7 @@ export default function ProfilePage() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>重要的人</Text>
-          <Text style={styles.cardSub}>危急时刻，他们是你最重要的力量。{isPro ? '可以添加多位联系人并附照片。' : '免费版可添加 1 位联系人；升级会员可添加多位并附照片。'}</Text>
+          <Text style={styles.cardSub}>危急时刻，他们是你最重要的力量。{hasAccess ? '可以添加多位联系人并附照片。' : '免费版可添加 1 位联系人；升级会员可添加多位并附照片。'}</Text>
           {contacts.map((c, i) => (
             <View key={c.name + i} style={styles.contactRow}>
               {c.photo ? <Image source={{ uri: c.photo }} style={styles.contactPhoto} /> : <View style={styles.contactPhotoPlaceholder}><Text style={{ fontSize: 20 }}>👤</Text></View>}
@@ -319,7 +325,7 @@ export default function ProfilePage() {
               <TextInput style={styles.inputBox} placeholder="姓名" value={newContactName} onChangeText={setNewContactName} />
               <View style={styles.relationRow}>{RELATIONS.map((r) => <TouchableOpacity key={r} style={[styles.relationBtn, newContactRelation === r && styles.relationSelected]} onPress={() => setNewContactRelation(r)}><Text style={[styles.relationText, newContactRelation === r && styles.relationTextSelected]}>{r}</Text></TouchableOpacity>)}</View>
               <TextInput style={styles.inputBox} placeholder="电话号码（可选）" value={newContactPhone} onChangeText={setNewContactPhone} keyboardType="phone-pad" />
-              <TouchableOpacity style={styles.photoBtn} onPress={pickPhoto}>{newContactPhoto ? <Image source={{ uri: newContactPhoto }} style={styles.photoPreview} /> : <Text style={styles.photoBtnText}>{isPro ? '添加照片（可选）' : '添加照片（会员功能）'}</Text>}</TouchableOpacity>
+              <TouchableOpacity style={styles.photoBtn} onPress={pickPhoto}>{newContactPhoto ? <Image source={{ uri: newContactPhoto }} style={styles.photoPreview} /> : <Text style={styles.photoBtnText}>{hasAccess ? '添加照片（可选）' : '添加照片（会员功能）'}</Text>}</TouchableOpacity>
               <View style={styles.formBtns}><TouchableOpacity style={styles.btnCancel} onPress={() => setActiveSection('')}><Text style={styles.btnCancelText}>取消</Text></TouchableOpacity><TouchableOpacity style={styles.btnSave} onPress={saveContact}><Text style={styles.btnSaveText}>保存</Text></TouchableOpacity></View>
             </View>
           ) : <TouchableOpacity style={styles.btnAdd} onPress={startAddContact}><Text style={styles.btnAddText}>+ 添加重要的人</Text></TouchableOpacity>}
@@ -327,7 +333,7 @@ export default function ProfilePage() {
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>我的目标</Text>
-          <Text style={styles.cardSub}>把节省下来的钱用在真正重要的事上。{isPro ? '可以添加多个目标。' : '免费版可添加 1 个目标；升级会员可添加多个。'}</Text>
+          <Text style={styles.cardSub}>把节省下来的钱用在真正重要的事上。{hasAccess ? '可以添加多个目标。' : '免费版可添加 1 个目标；升级会员可添加多个。'}</Text>
           {goals.map((g, i) => {
             const progress = g.target > 0 ? Math.min((g.current / g.target) * 100, 100) : 0;
             return (
