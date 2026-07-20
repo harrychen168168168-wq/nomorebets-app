@@ -18,5 +18,14 @@ export async function resolveHasAccess(
   if (snap.isPro) return true;
   if (!userId || !isCommunityConfigured()) return false;
   const links = await listGuardianLinks(userId).catch(() => []);
-  return links.length > 0;
+  // Only the INVITED member rides on someone else's plan. guardian/listLinks returns the caller's
+  // owner-side links too, so counting every row would let a payer whose own subscription lapsed
+  // keep full access forever through the link they created themselves.
+  return links.some((link) => link.memberUserId === userId);
 }
+
+// Known gap, deliberately not closed here: this trusts that an active link still means the payer is
+// paying. The server does check (ai-proxy verifySharedMembership re-reads the owner's membership on
+// every AI call), so AI access is correct; these local gates are not. Closing it properly means
+// routing through the proxy's /access — a network round trip on paths that currently answer from
+// local state, so it wants a deliberate decision rather than a late-night patch.

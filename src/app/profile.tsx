@@ -101,6 +101,10 @@ export default function ProfilePage() {
       const customerInfo = await Purchases.restorePurchases();
       const snapshot = customerInfoToSnapshot(customerInfo);
       setSubscription(snapshot);
+      // hasAccess is a separate state, so restoring only the snapshot left the plan card saying
+      // 「已激活」 while every feature gate still read the pre-restore value — the user would be
+      // told the restore worked and then hit a paywall on the very next tap.
+      setHasAccess(await resolveHasAccess(user?.id, snapshot));
       if (snapshot.isPro) Alert.alert('恢复成功', snapshot.planType === 'mutual' ? '互相守护版已激活。' : snapshot.planType === 'annual' ? '家庭守护版已激活。' : snapshot.planType === 'lifetime' ? '终身会员已激活。' : '个人自救版已激活。');
       else Alert.alert('没有找到有效订阅', '请确认当前 Apple ID 是否购买过该订阅。');
     } catch (error) {

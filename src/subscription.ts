@@ -107,6 +107,13 @@ function resolvePlanFromCustomerInfo(customerInfo: CustomerInfo, entitlement: an
 
   // Otherwise the active entitlement's own product is the single source of truth.
   const activeId = entitlement?.productIdentifier ?? entitlement?.product_identifier ?? entitlement?.productId ?? entitlement?.product_id;
+  // A dashboard promo grant is identified as rc_promo_<entitlement>_<duration>. Those durations
+  // include "yearly" and "lifetime", which the substring fallback in inferPlanType would happily
+  // read as a real annual/lifetime plan — handing a support comp the family-invite button, and (for
+  // "lifetime") removing the upgrade CTA entirely. A comp opens access, never a tier's perks.
+  if (String(activeId || '').toLowerCase().startsWith('rc_promo')) {
+    return { planType: 'unknown', productIdentifier: activeId };
+  }
   const activePlan = inferPlanType(activeId);
   if (activePlan !== 'unknown' && activePlan !== 'none') {
     return { planType: activePlan, productIdentifier: activeId };

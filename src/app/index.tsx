@@ -75,14 +75,24 @@ export default function HomePage() {
         setMonthlyLoss(state.monthlyLoss);
         setTodayGambled(state.todayGambled);
         const snap = await getSubscriptionSnapshot();
+        // Paint from local state first. The guardian-link lookup below is a network call, and
+        // gating the first frame on it left free users (who never short-circuit on isPro) staring
+        // at 「加载中...」 for as long as the request took to fail.
+        setIsPro(snap.isPro);
+        const localProt = await getProtectionState(snap.isPro ? 3 : 1);
+        setProtectionAvailable(localProt.available);
+        setTodayProtected(localProt.todayProtected);
+        setLoading(false);
+
         // Guardian members are covered by their payer's plan; without this they get one protection
         // card and a re-convert paywall aimed at someone whose family already paid for them.
         const pro = await resolveHasAccess(user?.id, snap);
-        setIsPro(pro);
-        const prot = await getProtectionState(pro ? 3 : 1);
-        setProtectionAvailable(prot.available);
-        setTodayProtected(prot.todayProtected);
-        setLoading(false);
+        if (pro !== snap.isPro) {
+          setIsPro(pro);
+          const prot = await getProtectionState(pro ? 3 : 1);
+          setProtectionAvailable(prot.available);
+          setTodayProtected(prot.todayProtected);
+        }
         if (!pro) maybeReconvert(state.streak);
       };
       init();
