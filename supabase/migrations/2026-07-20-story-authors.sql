@@ -25,11 +25,25 @@ alter table public.public_stories alter column author_user_id drop not null;
 
 -- 1) 旁表:默认拒绝一切。不建任何 policy,anon / authenticated 就都读不到;
 --    边缘函数用 service_role,不受 RLS 约束。
+-- 外键必须 DEFERRABLE INITIALLY DEFERRED:下面那个触发器是 BEFORE INSERT,它往这张表写入时
+-- public_stories 的那一行还没落地,立即校验的外键会必然失败 —— 后果是**所有新投稿被拒**。
+-- 延迟到 COMMIT 校验时父行已存在,既能通过,又保留引用完整性与 ON DELETE CASCADE。
+-- (这一条是实测踩出来的:第一版用了普通外键,回归测试里插入直接报 story_authors_story_id_fkey。)
 create table if not exists public.story_authors (
-  story_id uuid primary key references public.public_stories(id) on delete cascade,
+  story_id uuid primary key,
   author_user_id text not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint story_authors_story_id_fkey foreign key (story_id)
+    references public.public_stories(id) on delete cascade
+    deferrable initially deferred
 );
+
+-- 已存在的表(比如按第一版脚本建过)也要把约束换成延迟校验。
+alter table public.story_authors drop constraint if exists story_authors_story_id_fkey;
+alter table public.story_authors
+  add constraint story_authors_story_id_fkey foreign key (story_id)
+  references public.public_stories(id) on delete cascade
+  deferrable initially deferred;
 
 alter table public.story_authors enable row level security;
 revoke all on public.story_authors from anon, authenticated;
@@ -88,6 +102,12 @@ commit;
 -- ── 执行后验收(SQL) ───────────────────────────────────────────────
 -- select count(*) as 应为0 from public.public_stories where author_user_id is not null;
 -- select count(*) as 应等于执行前那个数 from public.story_authors;
+--
+-- ── 状态:已于 2026-07-20 对生产库执行并验收通过 ──────────────────
+-- 执行前 2 篇故事均带作者;执行后 public_stories 中为 0、story_authors 中为 2;列已可空;
+-- 触发器已装;策略已不再依赖 author_user_id。匿名 key 读 author_user_id 得到 null,读
+-- story_authors 得 42501;老客户端 select=* 与新客户端列清单均 200。回归测试(事务内 rollback)
+-- 确认:被封禁用户投稿失败、正常用户投稿成功且作者自动入旁表。
 --
 -- ── 执行后冒烟测试(必做,两项) ─────────────────────────────────────
 -- A. 在 App 里发一条新故事 → 管理台应能看到它,并能对它执行「禁言7天」。
