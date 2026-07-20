@@ -79,7 +79,14 @@ const config = {
   lifetimeAiLimit: readNumber('LIFETIME_AI_LIMIT', 100000),
   addonPacks: parseAddonPacks(),
   globalMonthlyBudgetCents: readNumber('GLOBAL_MONTHLY_BUDGET_CENTS', 500),
-  reservedCostCents: readNumber('RESERVED_COST_PER_AI_CALL_CENTS', 1),
+  // Estimated real cost of one call, in cents. This is the unit the ledger bills in, so it decides
+  // (a) when GLOBAL_MONTHLY_BUDGET_CENTS trips and (b) how far an add-on pack's credit stretches.
+  // It was 1 cent — roughly 20-30x the actual cost of a gpt-4o-mini call capped at MAX_OUTPUT_TOKENS
+  // 180 — which made the $50 breaker fire at ~5,000 calls (~$2 of real spend) and made a $9.99
+  // add-on grant only ~$0.12 of real AI despite being configured as $3.00 of credit.
+  // Re-derive this from the real OpenAI bill (actual spend ÷ call count) rather than trusting the
+  // estimate; it is deliberately rounded up so the breaker errs on the safe side.
+  reservedCostCents: readNumber('RESERVED_COST_PER_AI_CALL_CENTS', 0.05),
   maxOutputTokens: readNumber('MAX_OUTPUT_TOKENS', 180),
   maxInputChars: readNumber('MAX_INPUT_CHARS', 1800),
   maxMessages: readNumber('MAX_MESSAGES', 12),
@@ -370,7 +377,12 @@ async function verifySharedMembership(appUserId) {
         reason: 'family_guardian_shared',
         productId: membership.product_id,
         plan: { type: 'annual', productId: membership.product_id || 'family_guardian' },
-        quotaKey: String(link.ai_quota_group_id || ownerUserId),
+        // The invited member gets their own monthly bucket, like the mutual case below. Keying this
+        // to the payer (link.ai_quota_group_id) shared one counter between two people holding
+        // different ceilings: a lifetime payer bills against 100000 while the member is cut off at
+        // 100 — so the payer, who was promised unlimited and has no reason to hold back, silently
+        // consumed the member's allowance.
+        quotaKey: appUserId,
         addonGrants: [],
       };
     }
