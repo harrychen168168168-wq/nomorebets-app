@@ -89,6 +89,15 @@ const config = {
   abuseBurstLimit: readNumber('ABUSE_BURST_LIMIT', 60),
   abuseFlagWindowMs: readNumber('ABUSE_FLAG_WINDOW_MS', 60 * 60 * 1000),
   abuseFlagLimit: readNumber('ABUSE_FLAG_LIMIT', 40),
+  // Rapid-fire: allow a short burst, then space them out. Venting three messages back to back is
+  // normal when someone is falling apart, so the limit only starts at the fourth; and since a real
+  // exchange waits on an AI reply anyway, a conversing human never reaches it.
+  rapidWindowMs: readNumber('RAPID_WINDOW_MS', 10 * 1000),
+  rapidLimit: readNumber('RAPID_LIMIT', 3),
+  // The same message this many times over: another AI reply would be identical, so point at a real
+  // person instead. Only a hash of the text is ever stored — crisis messages must not land in the
+  // on-disk usage ledger.
+  duplicateLimit: readNumber('DUPLICATE_LIMIT', 10),
   addonPacks: parseAddonPacks(),
   globalMonthlyBudgetCents: readNumber('GLOBAL_MONTHLY_BUDGET_CENTS', 500),
   // Estimated real cost of one call, in cents. This is the unit the ledger bills in, so it decides
@@ -122,6 +131,8 @@ const replies = {
   addonRequired: 'Your monthly AI chats and add-on credit are used. Please buy another AI add-on pack to continue.',
   globalBudget: 'AI is paused by the monthly safety budget. Local support is still available.',
   rateLimited: 'Too many messages in a short time. Take a breath — the local emergency steps are still here, and AI will be back in a few minutes.',
+  rapidFire: 'Give it a few seconds — I am still here. Try one round of the breathing timer while you wait.',
+  duplicateFlood: 'You have sent the same message many times. Another AI reply would say the same thing. Please reach a real person now — call the hotline or message someone you trust. If you might be in danger, call 988 or 911.',
   unauthorized: 'AI is temporarily unavailable.',
   crisis:
     'Your safety matters most right now. Step away from danger, contact a real person immediately, and call 988 or 911 if you may hurt yourself or someone else.',
@@ -227,6 +238,18 @@ async function withLedger(update) {
   return run;
 }
 
+// Non-cryptographic; its only job is to notice the exact same message arriving over and over.
+// Storing a hash rather than the text keeps what people write mid-craving out of the disk ledger.
+function hashText(value) {
+  const text = String(value || '');
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 function ensureUserUsage(ledger, appUserId) {
   ledger.users[appUserId] ||= {
     monthly: {},
@@ -242,6 +265,8 @@ function ensureUserUsage(ledger, appUserId) {
   // hourly rate seen per month so the dashboard can report abuse without naming anyone.
   ledger.users[appUserId].recentCalls ||= [];
   ledger.users[appUserId].peakHourlyCalls ||= {};
+  ledger.users[appUserId].lastMessageHash ||= '';
+  ledger.users[appUserId].repeatCount ||= 0;
   return ledger.users[appUserId];
 }
 
@@ -450,7 +475,7 @@ function buildUsage(plan, monthUsage, userUsage, globalUsage) {
   };
 }
 
-async function reserveAiUse(quotaKey, plan, addonGrants) {
+async function reserveAiUse(quotaKey, plan, addonGrants, messageHash) {
   return withLedger(async (ledger) => {
     const month = todayMonth();
     const userUsage = ensureUserUsage(ledger, quotaKey);
@@ -503,6 +528,41 @@ async function reserveAiUse(quotaKey, plan, addonGrants) {
         message: replies.rateLimited,
         usage: buildUsage(plan, monthUsage, userUsage, globalUsage),
       };
+    }
+
+    // Rapid-fire: a short burst is fine, the one after it waits out the window.
+    const callsInRapidWindow = userUsage.recentCalls.filter((at) => now - at < config.rapidWindowMs);
+    if (callsInRapidWindow.length >= config.rapidLimit) {
+      const waitMs = config.rapidWindowMs - (now - Math.min(...callsInRapidWindow));
+      return {
+        ok: false,
+        status: 429,
+        code: 'rapid_fire',
+        message: replies.rapidFire,
+        retryAfterSeconds: Math.max(1, Math.ceil(waitMs / 1000)),
+        usage: buildUsage(plan, monthUsage, userUsage, globalUsage),
+      };
+    }
+
+    // Same message over and over. Sending something different resets the counter, so this can only
+    // hold back a flood of one identical string — never an ongoing conversation.
+    if (messageHash) {
+      if (messageHash === userUsage.lastMessageHash) {
+        userUsage.repeatCount = (userUsage.repeatCount || 0) + 1;
+      } else {
+        userUsage.lastMessageHash = messageHash;
+        userUsage.repeatCount = 1;
+      }
+      if (userUsage.repeatCount >= config.duplicateLimit) {
+        userUsage.peakHourlyCalls[month] = Math.max(userUsage.peakHourlyCalls[month] || 0, config.abuseFlagLimit);
+        return {
+          ok: false,
+          status: 429,
+          code: 'duplicate_flood',
+          message: replies.duplicateFlood,
+          usage: buildUsage(plan, monthUsage, userUsage, globalUsage),
+        };
+      }
     }
 
     let source = '';
@@ -696,11 +756,12 @@ async function handleChat(req, res) {
     }
 
     quotaKey = membership.quotaKey || appUserId;
-    const budget = await reserveAiUse(quotaKey, membership.plan, membership.addonGrants);
+    const budget = await reserveAiUse(quotaKey, membership.plan, membership.addonGrants, hashText(text));
     if (!budget.ok) {
       json(res, budget.status, {
         reply: budget.message,
         error: budget.code,
+        ...(budget.retryAfterSeconds ? { retryAfterSeconds: budget.retryAfterSeconds } : {}),
         fallback: localSupportReply(text),
         usage: { ...budget.usage, quotaKey },
         needsAddon: budget.code === 'addon_required',
@@ -799,6 +860,13 @@ function handleHealth(res) {
     addonPackCount: config.addonPacks.size,
     globalMonthlyBudgetCents: config.globalMonthlyBudgetCents,
     reservedCostPerAiCallCents: config.reservedCostCents,
+    guards: {
+      rapidLimit: config.rapidLimit,
+      rapidWindowSeconds: Math.round(config.rapidWindowMs / 1000),
+      duplicateLimit: config.duplicateLimit,
+      burstLimit: config.abuseBurstLimit,
+      burstWindowMinutes: Math.round(config.abuseBurstWindowMs / 60000),
+    },
   });
 }
 
