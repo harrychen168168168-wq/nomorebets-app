@@ -76,7 +76,19 @@ const config = {
   lifetimeProductIds: splitList(process.env.LIFETIME_PRODUCT_IDS),
   monthlyAiLimit: readNumber('MONTHLY_AI_LIMIT', 50),
   annualMonthlyAiLimit: readNumber('ANNUAL_MONTHLY_AI_LIMIT', 100),
-  lifetimeAiLimit: readNumber('LIFETIME_AI_LIMIT', 100000),
+  // "无限" for the buyout, with a fair-use ceiling. 1000/month is ~33 calls a day against an AI
+  // that is only reachable from the urge screen — an order of magnitude past any honest use, so a
+  // real customer never meets it, while a runaway client loop can no longer drain the global
+  // budget and take everyone else's AI down with it.
+  lifetimeAiLimit: readNumber('LIFETIME_AI_LIMIT', 1000),
+  // Abuse guards. Deliberately loose: this AI is reached mid-craving, and someone in a genuine
+  // episode may fire off a dozen messages in a couple of minutes. Blocking must only ever catch
+  // scripted traffic — a person in distress must never be the one who gets cut off. Anything
+  // suspicious but humanly possible is recorded for review and still allowed through.
+  abuseBurstWindowMs: readNumber('ABUSE_BURST_WINDOW_MS', 10 * 60 * 1000),
+  abuseBurstLimit: readNumber('ABUSE_BURST_LIMIT', 60),
+  abuseFlagWindowMs: readNumber('ABUSE_FLAG_WINDOW_MS', 60 * 60 * 1000),
+  abuseFlagLimit: readNumber('ABUSE_FLAG_LIMIT', 40),
   addonPacks: parseAddonPacks(),
   globalMonthlyBudgetCents: readNumber('GLOBAL_MONTHLY_BUDGET_CENTS', 500),
   // Estimated real cost of one call, in cents. This is the unit the ledger bills in, so it decides
@@ -109,6 +121,7 @@ const replies = {
   unknownPlan: 'AI is not enabled for this product yet. Please contact support.',
   addonRequired: 'Your monthly AI chats and add-on credit are used. Please buy another AI add-on pack to continue.',
   globalBudget: 'AI is paused by the monthly safety budget. Local support is still available.',
+  rateLimited: 'Too many messages in a short time. Take a breath — the local emergency steps are still here, and AI will be back in a few minutes.',
   unauthorized: 'AI is temporarily unavailable.',
   crisis:
     'Your safety matters most right now. Step away from danger, contact a real person immediately, and call 988 or 911 if you may hurt yourself or someone else.',
@@ -219,10 +232,16 @@ function ensureUserUsage(ledger, appUserId) {
     monthly: {},
     addonCreditCents: 0,
     grantedTransactions: {},
+    recentCalls: [],
+    peakHourlyCalls: {},
   };
   ledger.users[appUserId].monthly ||= {};
   ledger.users[appUserId].grantedTransactions ||= {};
   ledger.users[appUserId].addonCreditCents ||= 0;
+  // Rolling timestamps of granted calls, pruned to the flag window on every use, plus the highest
+  // hourly rate seen per month so the dashboard can report abuse without naming anyone.
+  ledger.users[appUserId].recentCalls ||= [];
+  ledger.users[appUserId].peakHourlyCalls ||= {};
   return ledger.users[appUserId];
 }
 
@@ -463,6 +482,29 @@ async function reserveAiUse(quotaKey, plan, addonGrants) {
       };
     }
 
+    // Burst guard. Only granted calls are timestamped, so a blocked caller drains out of the window
+    // and recovers on its own rather than locking themselves out permanently.
+    const now = Date.now();
+    userUsage.recentCalls = (userUsage.recentCalls || []).filter((at) => now - at < config.abuseFlagWindowMs);
+    const callsInFlagWindow = userUsage.recentCalls.length;
+    const callsInBurstWindow = userUsage.recentCalls.filter((at) => now - at < config.abuseBurstWindowMs).length;
+
+    // Record the worst hourly rate seen this month whether or not it is blocked, so sustained-but-
+    // humanly-possible traffic still surfaces on the dashboard for a human to look at.
+    if (callsInFlagWindow >= config.abuseFlagLimit) {
+      userUsage.peakHourlyCalls[month] = Math.max(userUsage.peakHourlyCalls[month] || 0, callsInFlagWindow);
+    }
+
+    if (callsInBurstWindow >= config.abuseBurstLimit) {
+      return {
+        ok: false,
+        status: 429,
+        code: 'rate_limited',
+        message: replies.rateLimited,
+        usage: buildUsage(plan, monthUsage, userUsage, globalUsage),
+      };
+    }
+
     let source = '';
     if (userUsage.addonCreditCents >= config.reservedCostCents) {
       userUsage.addonCreditCents -= config.reservedCostCents;
@@ -481,6 +523,7 @@ async function reserveAiUse(quotaKey, plan, addonGrants) {
       };
     }
 
+    userUsage.recentCalls.push(now);
     monthUsage.reservedCents = (monthUsage.reservedCents || 0) + config.reservedCostCents;
     globalUsage.calls += 1;
     globalUsage.reservedCents += config.reservedCostCents;
@@ -701,6 +744,8 @@ async function handleAdminUsage(req, res, url) {
   let baseCalls = 0;
   let addonCalls = 0;
   let addonCreditOutstandingCents = 0;
+  let flaggedUsers = 0;
+  let peakCallsBySingleUser = 0;
   for (const user of Object.values(ledger.users || {})) {
     addonCreditOutstandingCents += user.addonCreditCents || 0;
     const monthUsage = user.monthly?.[month];
@@ -709,6 +754,10 @@ async function handleAdminUsage(req, res, url) {
     if (used > 0) activeUsers += 1;
     baseCalls += monthUsage.baseCalls || 0;
     addonCalls += monthUsage.addonCalls || 0;
+    // Abuse signal, aggregate only — enough to know something is happening and go look, without
+    // putting a gambling-recovery user list behind a URL.
+    if ((user.peakHourlyCalls?.[month] || 0) >= config.abuseFlagLimit) flaggedUsers += 1;
+    if (used > peakCallsBySingleUser) peakCallsBySingleUser = used;
   }
 
   const budgetCents = config.globalMonthlyBudgetCents;
@@ -725,6 +774,13 @@ async function handleAdminUsage(req, res, url) {
     },
     addonCreditOutstandingCents,
     usersEverSeen: Object.keys(ledger.users || {}).length,
+    abuse: {
+      flaggedUsers,
+      peakCallsBySingleUser,
+      flagAtCallsPerHour: config.abuseFlagLimit,
+      blockAtCallsPerBurstWindow: config.abuseBurstLimit,
+      burstWindowMinutes: Math.round(config.abuseBurstWindowMs / 60000),
+    },
   });
 }
 
