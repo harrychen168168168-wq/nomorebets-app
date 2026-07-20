@@ -84,9 +84,24 @@ function mapStory(row: any): PublicStory {
   };
 }
 
+// React Native's fetch inherits NSURLSession's 60s default, which is far too long for anything a
+// screen waits on: a captive portal or a cold edge function would hold the UI for a minute before
+// failing. Every call in this file goes through here.
+const REQUEST_TIMEOUT_MS = 12000;
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function supabase(path: string, init: RequestInit = {}) {
   if (!isCommunityConfigured()) throw new Error('Supabase 还没有配置。');
-  const response = await fetch(SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/' + path, {
+  const response = await fetchWithTimeout(SUPABASE_URL.replace(/\/$/, '') + '/rest/v1/' + path, {
     ...init,
     headers: {
       apikey: SUPABASE_ANON_KEY,
@@ -124,7 +139,7 @@ async function callFunction(name: string, body: Record<string, unknown>, admin =
     if (!token) throw new Error('请用管理员账号重新登录后再操作。');
     headers.Authorization = 'Bearer ' + token;
   }
-  const response = await fetch(base + '/' + name, { method: 'POST', headers, body: JSON.stringify(body) });
+  const response = await fetchWithTimeout(base + '/' + name, { method: 'POST', headers, body: JSON.stringify(body) });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error || data?.message || '后端函数请求失败。');
   return data;

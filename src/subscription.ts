@@ -191,28 +191,3 @@ export function getFriendlyPurchaseError(error: any) {
   return '订阅暂时无法完成，请稍后重试或使用“恢复购买”。';
 }
 
-export type AppAccess = { allowed: boolean; source?: 'own' | 'shared'; reason?: string };
-
-// Whole-app subscription gate. A user may use the app if they have their own active subscription,
-// or (for an invited guardian member) if their payer's subscription is still active. The payer
-// check runs on the proxy, which verifies RevenueCat live — so access stops the moment the
-// payer's subscription lapses. Fails OPEN on network/proxy errors so an outage never locks out a
-// paying user (AI and other server resources stay independently gated server-side).
-export async function checkAppAccess(appUserId?: string): Promise<AppAccess> {
-  // Subscriptions only exist on iOS in this app; never hard-lock a platform that cannot subscribe.
-  if (Platform.OS !== 'ios') return { allowed: true, source: 'own', reason: 'non_ios' };
-
-  const snapshot = await getSubscriptionSnapshot();
-  if (snapshot.isPro) return { allowed: true, source: 'own' };
-
-  if (!appUserId || !AI_PROXY_URL) return { allowed: false, reason: 'no_subscription' };
-  try {
-    const base = AI_PROXY_URL.replace(/\/ai\/chat$/, '');
-    const res = await fetch(base + '/access?appUserId=' + encodeURIComponent(appUserId));
-    const data = await res.json().catch(() => ({}));
-    if (data?.hasAccess) return { allowed: true, source: 'shared' };
-    return { allowed: false, reason: data?.reason || 'no_subscription' };
-  } catch {
-    return { allowed: true, source: 'own', reason: 'access_check_unavailable' };
-  }
-}
