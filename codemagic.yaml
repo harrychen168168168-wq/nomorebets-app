@@ -85,8 +85,16 @@ workflows:
 
       - name: Set iOS version and build number
         script: |
+          # Read the marketing version from app.json instead of hardcoding it. app.json's version
+          # also drives runtimeVersion (policy: appVersion), so a hardcoded copy here can silently
+          # disagree with it. Build 44 died on exactly this class of problem: App Store Connect
+          # rejects a build whose version train is already released ("Invalid Pre-Release Train",
+          # error 90186), which means every release from now on must bump app.json — and this line
+          # must follow it automatically rather than be remembered.
+          APP_VERSION=$(node -p "require('./app.json').expo.version")
+          echo "marketing version from app.json: $APP_VERSION"
           cd ios
-          agvtool new-marketing-version 1.1.0
+          agvtool new-marketing-version "$APP_VERSION"
           # Auto-increment from Codemagic's per-project build counter ($BUILD_NUMBER == the build
           # "Index") so the uploaded build is always higher than the last App Store build. Was
           # hardcoded to 29, which kept colliding (App Store Connect 409 ATTRIBUTE.INVALID.DUPLICATE).
