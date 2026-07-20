@@ -19,14 +19,8 @@ workflows:
         EXPO_NO_TELEMETRY: "1"
         APP_IDENTIFIER: "com.nomorebets.app"
         APPLE_TEAM_ID: "SK2FKVF4KW"
-        # Sentry's source-map upload needs SENTRY_AUTH_TOKEN. Without one, sentry-cli fails and
-        # node_modules/@sentry/react-native/scripts/sentry-xcode.sh sets exitCode=1, which fails the
-        # whole build — SENTRY_ALLOW_FAILURE is named in that script's error text but never actually
-        # implemented, so it is not an escape hatch. Crash reporting itself works fine with upload
-        # off; only the stack traces stay minified instead of pointing at src/... file:line.
-        # To enable: add SENTRY_AUTH_TOKEN to the nomorebets_secrets group, add SENTRY_ORG
-        # (nezha2-capital-inc) and SENTRY_PROJECT (the project slug), then set this to "false".
-        SENTRY_DISABLE_AUTO_UPLOAD: "true"
+        SENTRY_ORG: "nezha2-capital-inc"
+        SENTRY_PROJECT: "nomorebets"
       ios_signing:
         provisioning_profiles:
           - "NoMoreBets_AppStore_AppleSignIn"
@@ -46,6 +40,23 @@ workflows:
           grep -E '^EXPO_PUBLIC_' .env >> "$CM_ENV"
           echo "Loaded EXPO_PUBLIC vars into build env:"
           grep -E '^EXPO_PUBLIC_' .env | cut -d= -f1 | sed 's/^/  - /'
+
+      # Source-map upload needs SENTRY_AUTH_TOKEN. Without one sentry-cli fails, and
+      # node_modules/@sentry/react-native/scripts/sentry-xcode.sh sets exitCode=1 — which fails the
+      # entire build. (SENTRY_ALLOW_FAILURE is named in that script's error text but never actually
+      # implemented, so it is not an escape hatch.) So decide from the token itself: add
+      # SENTRY_AUTH_TOKEN to the nomorebets_secrets group and uploads start working with no further
+      # code change; leave it unset and the build simply ships minified stack traces. Crash
+      # reporting itself is unaffected either way.
+      - name: Enable Sentry source maps only when a token is present
+        script: |
+          if [ -n "$SENTRY_AUTH_TOKEN" ]; then
+            echo "SENTRY_AUTH_TOKEN found — source map upload ENABLED"
+            echo "SENTRY_DISABLE_AUTO_UPLOAD=false" >> "$CM_ENV"
+          else
+            echo "No SENTRY_AUTH_TOKEN — source map upload DISABLED (stack traces stay minified)"
+            echo "SENTRY_DISABLE_AUTO_UPLOAD=true" >> "$CM_ENV"
+          fi
 
       - name: Prebuild iOS project
         script: |
