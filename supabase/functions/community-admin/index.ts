@@ -96,6 +96,42 @@ Deno.serve(async (req) => {
       return json({ sanction: rows?.[0] });
     }
 
+    // Moderators make mistakes and every sanction here was one-way: `blocked` is written with
+    // active_until = null, and is_user_sanctioned() treats null as "forever", so a misclick was
+    // permanent and only fixable by hand-editing the table.
+    //
+    // Neither action returns user_id. The moderator identifies a row by level + reason (the reason
+    // carries the story title) + date, which is enough to undo their own action without shipping a
+    // gambling-recovery user id to a device — same reasoning as listPendingStories above.
+    if (action === 'listActiveSanctions') {
+      const rows = await rest('user_sanctions?select=id,level,reason,created_at,active_until&order=created_at.desc&limit=100');
+      const now = Date.now();
+      // Mirrors public.is_user_sanctioned() exactly: only these levels block, and null means forever.
+      // Filtering here rather than in the query keeps it away from PostgREST's or/timestamp syntax.
+      const active = (Array.isArray(rows) ? rows : []).filter((row: any) =>
+        ['mute_7d', 'mute_30d', 'blocked'].includes(String(row.level))
+        && (!row.active_until || new Date(row.active_until).getTime() > now));
+      return json({ sanctions: active });
+    }
+
+    if (action === 'liftSanction') {
+      const sanctionId = String(body.sanctionId || '');
+      if (!sanctionId) return json({ error: 'missing_sanction_id' }, 400);
+      // Expire rather than delete: the moderation trail should keep showing that it happened and
+      // that it was undone. is_user_sanctioned() stops matching once active_until is in the past.
+      const liftedAt = new Date().toISOString();
+      const rows = await rest('user_sanctions?id=eq.' + encodeURIComponent(sanctionId), {
+        method: 'PATCH',
+        body: JSON.stringify({ active_until: liftedAt }),
+      });
+      if (!Array.isArray(rows) || !rows.length) return json({ error: 'missing_sanction' }, 404);
+      await rest('moderation_logs', {
+        method: 'POST',
+        body: JSON.stringify({ admin_user_id: adminUserId, action: 'sanction_lifted', target_type: 'user_sanction', target_id: sanctionId, detail: body.reason || '' }),
+      });
+      return json({ ok: true });
+    }
+
     return json({ error: 'unknown_action' }, 400);
   } catch (error) {
     console.error('[community-admin]', error);

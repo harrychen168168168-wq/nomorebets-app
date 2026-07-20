@@ -233,6 +233,25 @@ export async function sanctionStoryAuthor(storyId: string, level: SanctionLevel,
   await callFunction('community-admin', { action: 'sanctionStoryAuthor', storyId, level, reason, adminUserId }, true);
 }
 
+// Deliberately carries no user id — a moderator undoes their own action by level + reason + date.
+export type ActiveSanction = { id: string; level: SanctionLevel; reason: string; createdAt: string; activeUntil: string | null };
+
+export async function listActiveSanctions(): Promise<ActiveSanction[]> {
+  const data = await callFunction('community-admin', { action: 'listActiveSanctions' }, true);
+  const rows = Array.isArray(data.sanctions) ? data.sanctions : [];
+  return rows.map((row: any) => ({
+    id: String(row.id),
+    level: row.level as SanctionLevel,
+    reason: row.reason || '',
+    createdAt: row.created_at || '',
+    activeUntil: row.active_until || null,
+  }));
+}
+
+export async function liftSanction(sanctionId: string, adminUserId: string, reason = '管理员解除') {
+  await callFunction('community-admin', { action: 'liftSanction', sanctionId, adminUserId, reason }, true);
+}
+
 export async function createGuardianInvite(ownerUserId: string, type: GuardianRelationshipType) {
   const data = await callFunction('guardian', { action: 'createInvite', userId: ownerUserId, type });
   return data.invite as InviteLink;

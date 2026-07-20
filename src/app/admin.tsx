@@ -1,5 +1,5 @@
 import { useAuth } from '@/auth';
-import { isCommunityConfigured, listOpenReports, listPendingStories, moderateStory, PublicStory, resolveReport, sanctionStoryAuthor, SanctionLevel } from '@/community';
+import { ActiveSanction, isCommunityConfigured, liftSanction, listActiveSanctions, listOpenReports, listPendingStories, moderateStory, PublicStory, resolveReport, sanctionStoryAuthor, SanctionLevel } from '@/community';
 import PageContainer from '@/components/PageContainer';
 import { APP_VERSION } from '@/config';
 import { DailyRecord, loadData as loadStoredData, readDailyRecords } from '@/storage';
@@ -37,6 +37,7 @@ export default function AdminPage() {
   const [stats, setStats] = useState<AdminStats>({ totalRecords: 0, noGambleDays: 0, relapseDays: 0, totalLoss: 0, contacts: 0, goals: 0, lastRecordDate: '暂无' });
   const [pendingStories, setPendingStories] = useState<PublicStory[]>([]);
   const [reports, setReports] = useState<any[]>([]);
+  const [sanctions, setSanctions] = useState<ActiveSanction[]>([]);
   const [adminError, setAdminError] = useState('');
 
   const load = useCallback(async () => {
@@ -44,13 +45,15 @@ export default function AdminPage() {
     setStats(calcStats(records, safeList(contactsRaw), safeList(goalsRaw)));
     if (isCommunityConfigured()) {
       try {
-        const [stories, openReports] = await Promise.all([listPendingStories(), listOpenReports()]);
+        const [stories, openReports, activeSanctions] = await Promise.all([listPendingStories(), listOpenReports(), listActiveSanctions()]);
         setPendingStories(stories);
         setReports(openReports);
+        setSanctions(activeSanctions);
         setAdminError('');
       } catch (error: any) {
         setPendingStories([]);
         setReports([]);
+        setSanctions([]);
         setAdminError(error?.message || '管理员函数暂时不可用。');
       }
     }
@@ -77,6 +80,24 @@ export default function AdminPage() {
     } catch (error: any) {
       Alert.alert('处理失败', error?.message || '请检查 Supabase 权限。');
     }
+  }
+
+  function confirmLift(sanction: ActiveSanction) {
+    Alert.alert('解除这条限制？', '解除后该用户可以重新发布公开故事。这条限制记录会保留在审核日志里。', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '解除',
+        onPress: async () => {
+          try {
+            await liftSanction(sanction.id, user?.id || 'admin');
+            await load();
+            Alert.alert('已解除', '该用户已恢复发布权限。');
+          } catch (error: any) {
+            Alert.alert('解除失败', error?.message || '请检查 Supabase 权限。');
+          }
+        },
+      },
+    ]);
   }
 
   const SANCTION_LABELS: { level: SanctionLevel; label: string }[] = [
@@ -171,10 +192,24 @@ export default function AdminPage() {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.cardTitle}>生效中的限制</Text>
+          {sanctions.length === 0 ? <Text style={styles.rowText}>暂无生效中的限制。</Text> : sanctions.map((sanction) => (
+            <View key={sanction.id} style={styles.reviewItem}>
+              <Text style={styles.storyTitle}>{SANCTION_LABELS.find((item) => item.level === sanction.level)?.label || sanction.level}</Text>
+              {sanction.reason ? <Text style={styles.rowText}>原因：{sanction.reason}</Text> : null}
+              <Text style={styles.rowText}>{sanction.activeUntil ? '到期：' + sanction.activeUntil.slice(0, 10) : '永久生效（不会自动到期）'}</Text>
+              <View style={styles.actions}>
+                <TouchableOpacity style={styles.goodBtn} onPress={() => confirmLift(sanction)}><Text style={styles.goodText}>解除限制</Text></TouchableOpacity>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.cardTitle}>版本与权限</Text>
           <Text style={styles.rowText}>App 版本：{APP_VERSION}</Text>
           <Text style={styles.rowText}>最近记录：{stats.lastRecordDate}</Text>
-          <Text style={styles.rowText}>限制/封锁违规用户的数据表已在 Supabase schema 中准备，正式上线建议放到服务端执行。</Text>
+          <Text style={styles.rowText}>限制与解除均在服务端执行并写入审核日志；封锁不会自动到期，需要在上方手动解除。</Text>
         </View>
         <TouchableOpacity style={styles.primaryBtn} onPress={() => router.push('/profile')}><Text style={styles.primaryBtnText}>返回我的页面</Text></TouchableOpacity>
         <View style={{ height: 40 }} />
