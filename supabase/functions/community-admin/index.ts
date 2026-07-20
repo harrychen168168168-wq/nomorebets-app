@@ -73,8 +73,16 @@ Deno.serve(async (req) => {
       if (action === 'sanctionStoryAuthor') {
         const storyId = String(body.storyId || '');
         if (!storyId) return json({ error: 'missing_story_id' }, 400);
-        const stories = await rest('public_stories?select=author_user_id&id=eq.' + encodeURIComponent(storyId) + '&limit=1');
-        userId = String(stories?.[0]?.author_user_id || '');
+        // Works either side of the story_authors migration: once it has run the id lives in the
+        // side table and public_stories.author_user_id is null; before it runs, only the column
+        // exists. Checking both means the function can deploy independently of the SQL.
+        const stashed = await rest('story_authors?select=author_user_id&story_id=eq.' + encodeURIComponent(storyId) + '&limit=1')
+          .catch(() => null);
+        userId = String(stashed?.[0]?.author_user_id || '');
+        if (!userId) {
+          const stories = await rest('public_stories?select=author_user_id&id=eq.' + encodeURIComponent(storyId) + '&limit=1');
+          userId = String(stories?.[0]?.author_user_id || '');
+        }
         if (!userId) return json({ error: 'story_has_no_author' }, 404);
       }
       const level = String(body.level || '');
