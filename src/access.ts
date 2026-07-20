@@ -68,14 +68,21 @@ async function hasSharedAccess(userId: string): Promise<boolean> {
   return answer;
 }
 
+// Total by construction: PlanTodayCard and profile.tsx clear their loading flags on the line after
+// this resolves, so anything thrown here would strand those screens mid-load. Every failure path
+// returns false instead.
 export async function resolveHasAccess(
   userId?: string | null,
   snapshot?: SubscriptionSnapshot | null,
 ): Promise<boolean> {
-  const snap = snapshot ?? (await getSubscriptionSnapshot());
-  // Anyone with their own entitlement is answered locally and instantly — no network on the path
-  // that every paying customer takes.
-  if (snap.isPro) return true;
-  if (!userId) return false;
-  return hasSharedAccess(userId);
+  try {
+    const snap = snapshot ?? (await getSubscriptionSnapshot());
+    // Anyone with their own entitlement is answered locally and instantly — no network on the path
+    // that every paying customer takes.
+    if (snap.isPro) return true;
+    if (!userId) return false;
+    return await hasSharedAccess(userId);
+  } catch {
+    return false;
+  }
 }
