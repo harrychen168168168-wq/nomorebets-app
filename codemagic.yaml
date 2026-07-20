@@ -102,8 +102,12 @@ workflows:
           # rejects a build whose version train is already released ("Invalid Pre-Release Train",
           # error 90186), which means every release from now on must bump app.json — and this line
           # must follow it automatically rather than be remembered.
+          set -euo pipefail
           APP_VERSION=$(node -p "require('./app.json').expo.version")
           echo "marketing version from app.json: $APP_VERSION"
+          # Fail here rather than 40 minutes later at upload: an empty version silently produces a
+          # binary App Store Connect will reject.
+          [ -n "$APP_VERSION" ] || { echo "FAIL: could not read version from app.json"; exit 1; }
           cd ios
           agvtool new-marketing-version "$APP_VERSION"
           # Auto-increment from Codemagic's per-project build counter ($BUILD_NUMBER == the build

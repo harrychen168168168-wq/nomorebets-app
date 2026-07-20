@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.1.0';
+export const APP_VERSION = '1.1.1';
 
 export const REVENUECAT_IOS_KEY = 'appl_cARPBxsGcMQCnDXFWPDSKMGjWkK';
 export const REVENUECAT_ENTITLEMENT_ID = 'NO MORE BETS Pro';
