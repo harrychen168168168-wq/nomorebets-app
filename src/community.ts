@@ -130,10 +130,19 @@ async function callFunction(name: string, body: Record<string, unknown>, admin =
   return data;
 }
 
+// Explicit columns, deliberately WITHOUT author_user_id. `select=*` handed every reader the author
+// of every "anonymous" story — not a name, but a stable id that ties one person's separate
+// confessions together, which is exactly what 匿名 is supposed to prevent. Nothing in the wall UI
+// ever used it. This is only half the fix: the column stays readable at the database level until
+// enough clients have moved off `select=*`, otherwise revoking it would 42501 the wall for
+// everyone still on an older build.
+const STORY_COLUMNS =
+  'id,source_record_date,display_mode,display_name,gambling_type,title,excerpt,body,status,source,created_at,published_at,reviewed_at,reviewed_by,rejection_reason';
+
 export async function listApprovedStories(limit = 20): Promise<PublicStory[]> {
   if (!isCommunityConfigured()) return [];
   const rows = await supabase(
-    'public_stories?select=*&status=eq.approved&source=eq.user&order=published_at.desc.nullslast,created_at.desc&limit=' + limit
+    'public_stories?select=' + STORY_COLUMNS + '&status=eq.approved&source=eq.user&order=published_at.desc.nullslast,created_at.desc&limit=' + limit
   );
   return Array.isArray(rows) ? rows.map(mapStory) : [];
 }
