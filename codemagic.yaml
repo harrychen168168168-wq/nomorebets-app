@@ -240,3 +240,139 @@ workflows:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
+
+  android-release:
+    name: NoMoreBets Android Release
+    max_build_duration: 90
+    instance_type: linux_x2
+
+    environment:
+      groups:
+        # Same encrypted group as iOS: EXPO_PUBLIC_* (loaded from .env below), SENTRY_AUTH_TOKEN, and —
+        # once you add it — GCLOUD_SERVICE_ACCOUNT_CREDENTIALS for automated Play uploads.
+        - nomorebets_secrets
+      node: 22
+      java: 17
+      # Upload the UPLOAD keystore in Codemagic → Code signing identities → Android keystores, using the
+      # reference name below. Codemagic then exposes CM_KEYSTORE_PATH / CM_KEYSTORE_PASSWORD /
+      # CM_KEY_ALIAS / CM_KEY_PASSWORD, which the "Configure release signing" step wires into Gradle.
+      android_signing:
+        - nomorebets_upload
+      vars:
+        EXPO_NO_TELEMETRY: "1"
+        PACKAGE_NAME: "com.nomorebets.app"
+        SENTRY_ORG: "nezha2-capital-inc"
+        SENTRY_PROJECT: "nomorebets"
+
+    scripts:
+      - name: Install dependencies
+        script: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Load EXPO_PUBLIC env vars
+        script: |
+          # Same as iOS: force EXPO_PUBLIC_* from .env into the build env so Metro inlines them
+          # (Supabase URL/anon key). Without this the Android bundle ships "Supabase not configured".
+          grep -E '^EXPO_PUBLIC_' .env >> "$CM_ENV"
+          echo "Loaded EXPO_PUBLIC vars into build env:"
+          grep -E '^EXPO_PUBLIC_' .env | cut -d= -f1 | sed 's/^/  - /'
+
+      # Identical gate to iOS: add SENTRY_AUTH_TOKEN to nomorebets_secrets and Android source-map upload
+      # turns on; leave it unset and the build ships minified traces (crash reporting still works).
+      - name: Enable Sentry source maps only when a token is present
+        script: |
+          if [ -n "$SENTRY_AUTH_TOKEN" ]; then
+            echo "SENTRY_AUTH_TOKEN found — source map upload ENABLED"
+            echo "SENTRY_DISABLE_AUTO_UPLOAD=false" >> "$CM_ENV"
+          else
+            echo "No SENTRY_AUTH_TOKEN — source map upload DISABLED (stack traces stay minified)"
+            echo "SENTRY_DISABLE_AUTO_UPLOAD=true" >> "$CM_ENV"
+          fi
+
+      - name: Prebuild Android project
+        script: |
+          npx expo prebuild --platform android --clean
+
+      # Android analog of the iOS Expo.plist check. prebuild writes the update channel (expo-channel-name)
+      # into AndroidManifest.xml / res/values/strings.xml. Warn-only for now: the exact storage key varies
+      # by Expo version so we don't hard-fail a correct build — but a present-yet-WRONG channel is a hard
+      # fail (that is the 1.1.0-class OTA bug). Harden to a hard-fail once the key is confirmed on CI.
+      - name: Assert OTA channel baked into Android config
+        script: |
+          set +e
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          STRINGS=android/app/src/main/res/values/strings.xml
+          if grep -rhoE 'expo-channel-name[^}]*production' "$MANIFEST" "$STRINGS" 2>/dev/null | grep -q production; then
+            echo "OK: OTA channel 'production' present in Android config."
+          elif grep -rq 'expo-channel-name' "$MANIFEST" "$STRINGS" 2>/dev/null; then
+            echo "FAIL: expo-channel-name present but not 'production' — this build could never receive the right EAS Update."
+            exit 1
+          else
+            echo "WARN: expo-channel-name not located (Expo-version specific). Verify Android OTA on first successful build before relying on it."
+          fi
+
+      - name: Set Android versionCode from build number
+        script: |
+          set -euo pipefail
+          APP_VERSION=$(node -p "require('./app.json').expo.version")
+          echo "versionName (from app.json): $APP_VERSION"
+          [ -n "$BUILD_NUMBER" ] || { echo "FAIL: BUILD_NUMBER not set"; exit 1; }
+          node -e '
+            const fs = require("fs");
+            const p = "android/app/build.gradle";
+            let g = fs.readFileSync(p, "utf8");
+            const bn = process.env.BUILD_NUMBER;
+            const before = g;
+            g = g.replace(/versionCode\s+\d+/, "versionCode " + bn);
+            if (g === before) { console.error("FAIL: could not set versionCode in build.gradle"); process.exit(1); }
+            fs.writeFileSync(p, g);
+            console.log("Set versionCode = " + bn);
+          '
+
+      # Expo prebuild regenerates android/app/build.gradle each run with a debug-signed release buildType.
+      # Inject a real release signingConfig backed by the Codemagic keystore env vars.
+      - name: Configure release signing
+        script: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const p = "android/app/build.gradle";
+            let g = fs.readFileSync(p, "utf8");
+            if (g.includes("signingConfigs.release")) { console.log("release signingConfig already present"); process.exit(0); }
+            const releaseBlock = [
+              "        release {",
+              "            storeFile file(System.getenv(\"CM_KEYSTORE_PATH\"))",
+              "            storePassword System.getenv(\"CM_KEYSTORE_PASSWORD\")",
+              "            keyAlias System.getenv(\"CM_KEY_ALIAS\")",
+              "            keyPassword System.getenv(\"CM_KEY_PASSWORD\")",
+              "        }"
+            ].join("\n");
+            let before = g;
+            g = g.replace(/signingConfigs\s*\{/, function (m) { return m + "\n" + releaseBlock; });
+            if (g === before) { console.error("FAIL: signingConfigs block not found for injection"); process.exit(1); }
+            before = g;
+            g = g.replace(/(buildTypes\s*\{[\s\S]*?release\s*\{[\s\S]*?signingConfig\s+signingConfigs\.)debug/, "$1release");
+            if (g === before) { console.error("FAIL: could not repoint release buildType to signingConfigs.release"); process.exit(1); }
+            fs.writeFileSync(p, g);
+            console.log("Injected release signingConfig and repointed release buildType.");
+          '
+
+      - name: Build Android App Bundle (.aab)
+        script: |
+          set -euo pipefail
+          cd android
+          ./gradlew bundleRelease --no-daemon
+
+    artifacts:
+      - android/app/build/outputs/bundle/release/*.aab
+      - android/app/build/outputs/mapping/release/mapping.txt
+
+    # FIRST upload only: Google Play's Developer API cannot create an app's very first release. Download
+    # the .aab artifact above and upload it manually to the Internal testing track once. After that first
+    # manual release exists, add GCLOUD_SERVICE_ACCOUNT_CREDENTIALS to nomorebets_secrets and UNCOMMENT
+    # the block below to auto-publish subsequent builds.
+    # publishing:
+    #   google_play:
+    #     credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+    #     track: internal
+    #     submit_as_draft: false

@@ -94,7 +94,7 @@ function translateAuthError(message: string) {
 }
 
 async function bindRevenueCatUser(userId: string) {
-  if (Platform.OS !== 'ios') return;
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') return;
   try {
     await configureRevenueCat();
     await Purchases.logIn(userId);
@@ -260,7 +260,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
       try {
         await configureRevenueCat();
         await Purchases.logOut();
@@ -281,7 +281,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (user?.id) await cloudDeleteAll(user.id).catch(() => {});
     await resetAllData();
     await supabase.auth.signOut();
-    if (Platform.OS === 'ios') {
+    if (Platform.OS === 'ios' || Platform.OS === 'android') {
       try {
         await configureRevenueCat();
         await Purchases.logOut();

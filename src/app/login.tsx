@@ -1,6 +1,6 @@
 import { useAuth } from '@/auth';
 import PrivacyPolicyModal from '@/components/PrivacyPolicyModal';
-import { GOOGLE_IOS_CLIENT_ID, TERMS_URL } from '@/config';
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID, TERMS_URL } from '@/config';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import { useEffect, useMemo, useState } from 'react';
@@ -21,17 +21,27 @@ export default function LoginScreen() {
   const [resetCode, setResetCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
 
-  const googleConfigured = Platform.OS === 'ios' && !!GOOGLE_IOS_CLIENT_ID;
+  // iOS needs the iOS client id; Android needs the Web client id (to mint a verifiable idToken).
+  const googleConfigured =
+    (Platform.OS === 'ios' && !!GOOGLE_IOS_CLIENT_ID) ||
+    (Platform.OS === 'android' && !!GOOGLE_WEB_CLIENT_ID);
 
   const loading = loadingAction !== '';
 
   // Native Google Sign-In returns a backend-verifiable id_token directly (no browser redirect).
   // Lazy-require (not a top-level import) so a native-module issue can never crash app startup.
   useEffect(() => {
-    if (Platform.OS === 'web' || !GOOGLE_IOS_CLIENT_ID) return;
+    // iOS uses iosClientId; Android needs webClientId to return a backend-verifiable idToken
+    // (offlineAccess makes the native lib actually request that idToken).
+    if (Platform.OS === 'web') return;
+    if (Platform.OS === 'ios' && !GOOGLE_IOS_CLIENT_ID) return;
+    if (Platform.OS === 'android' && !GOOGLE_WEB_CLIENT_ID) return;
     try {
       const { GoogleSignin } = require('@react-native-google-signin/google-signin');
-      GoogleSignin.configure({ iosClientId: GOOGLE_IOS_CLIENT_ID });
+      GoogleSignin.configure({
+        ...(GOOGLE_IOS_CLIENT_ID ? { iosClientId: GOOGLE_IOS_CLIENT_ID } : {}),
+        ...(GOOGLE_WEB_CLIENT_ID ? { webClientId: GOOGLE_WEB_CLIENT_ID, offlineAccess: true } : {}),
+      });
     } catch (error) {
       console.warn('[google] configure failed:', error);
     }
@@ -151,12 +161,12 @@ export default function LoginScreen() {
   }
 
   async function handleGoogleLogin() {
-    if (Platform.OS !== 'ios') {
-      Alert.alert('Google 登录', 'Google 登录需要在 iOS 真机、TestFlight 或 App Store 环境中使用。');
+    if (Platform.OS === 'web') {
+      Alert.alert('Google 登录', 'Google 登录需要在 iOS 或 Android 真机 / 应用商店环境中使用。');
       return;
     }
     if (!googleConfigured) {
-      Alert.alert('Google 登录未配置', '请先在 src/config.ts 填入 Google iOS Client ID。');
+      Alert.alert('Google 登录未配置', '请先在 src/config.ts 填入 Google Client ID（iOS 用 iOS Client ID，Android 用 Web Client ID）。');
       return;
     }
     let GoogleSignin: any;
@@ -216,11 +226,15 @@ export default function LoginScreen() {
               </TouchableOpacity>
             )}
 
-            <View style={styles.dividerRow}><View style={styles.divider} /><Text style={styles.dividerText}>或</Text><View style={styles.divider} /></View>
+            {(Platform.OS === 'ios' || googleConfigured) && (
+              <View style={styles.dividerRow}><View style={styles.divider} /><Text style={styles.dividerText}>或</Text><View style={styles.divider} /></View>
+            )}
 
-            <TouchableOpacity style={styles.providerButton} onPress={handleAppleLogin} disabled={loading}>
-              {loadingAction === 'apple' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}>使用 Apple 登录</Text>}
-            </TouchableOpacity>
+            {Platform.OS === 'ios' && (
+              <TouchableOpacity style={styles.providerButton} onPress={handleAppleLogin} disabled={loading}>
+                {loadingAction === 'apple' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}>使用 Apple 登录</Text>}
+              </TouchableOpacity>
+            )}
             {googleConfigured && (
               <TouchableOpacity style={styles.providerButton} onPress={handleGoogleLogin} disabled={loading}>
                 {loadingAction === 'google' ? <ActivityIndicator color="#111" /> : <Text style={styles.providerText}>使用 Google 登录</Text>}
@@ -261,7 +275,7 @@ export default function LoginScreen() {
           <Text style={styles.infoTitle}>账号说明</Text>
           <Text style={styles.infoText}>· 登录后，你的记录会安全同步到云端。</Text>
           <Text style={styles.infoText}>· 换手机或重装后，用同一个登录方式即可找回数据。</Text>
-          <Text style={styles.infoText}>· 支持邮箱、Apple、Google 登录。</Text>
+          <Text style={styles.infoText}>· 支持{Platform.OS === 'ios' ? '邮箱、Apple、Google' : '邮箱、Google'}登录。</Text>
         </View>
 
         <View style={styles.warningCard}>

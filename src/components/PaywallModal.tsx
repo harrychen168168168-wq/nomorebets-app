@@ -26,6 +26,12 @@ const MUTUAL_KEYWORDS = ['mutual', 'couple', 'partner', 'duo', 'pair'];
 // (LIFETIME_PRODUCT_IDS, e.g. $99.99) is shown instead. Two REAL products — never a fake price on one.
 const PROMO_DURATION_MS = 5 * 60 * 1000;
 
+// Store-specific billing copy/links. iOS strings stay exactly as before; Android points at Google Play.
+const IS_ANDROID = Platform.OS === 'android';
+const MANAGE_SUBSCRIPTION_URL = IS_ANDROID
+  ? 'https://play.google.com/store/account/subscriptions'
+  : 'https://apps.apple.com/account/subscriptions';
+
 function isMutualProduct(productId: string) {
   const id = productId.toLowerCase();
   return MUTUAL_PRODUCT_IDS.some((x) => x.toLowerCase() === id) || MUTUAL_KEYWORDS.some((keyword) => id.includes(keyword));
@@ -104,9 +110,9 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
   }, [visible, promoDeadline]);
 
   async function loadOfferings() {
-    if (Platform.OS !== 'ios') {
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
       setLoading(false);
-      setErrorMsg('订阅购买需要在 iOS 真机、TestFlight 或 App Store 环境中测试。');
+      setErrorMsg('订阅购买需要在 iOS 或 Android 真机 / 应用商店环境中测试。');
       return;
     }
     try {
@@ -121,7 +127,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
       else if (pickPackage(pkgs, 'ANNUAL')) setSelected('ANNUAL');
       else if (pickPackage(pkgs, 'MUTUAL')) setSelected('MUTUAL');
       else if (pickPackage(pkgs, 'MONTHLY')) setSelected('MONTHLY');
-      if (pkgs.length === 0) setErrorMsg('暂时无法加载订阅选项，请检查 App Store Connect 与 RevenueCat 产品配置。');
+      if (pkgs.length === 0) setErrorMsg('暂时无法加载订阅选项，请检查应用商店与 RevenueCat 产品配置。');
     } catch (error) {
       console.log('[Paywall] load offerings failed:', error);
       setErrorMsg(getFriendlyPurchaseError(error));
@@ -241,7 +247,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
             {loading ? (
               <View style={styles.loadingBox}>
                 <ActivityIndicator color="#2E7D32" />
-                <Text style={styles.loadingText}>正在读取 App Store 订阅选项...</Text>
+                <Text style={styles.loadingText}>正在读取订阅选项...</Text>
               </View>
             ) : hasPlans ? (
               <View style={styles.plans}>
@@ -322,7 +328,7 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
                 {purchasing ? (
                   <View style={styles.purchasingRow}><ActivityIndicator color="#2E7D32" /><Text style={styles.purchasingText}>正在处理…</Text></View>
                 ) : (
-                  <Text style={styles.tapHint}>点选任一方案即可购买（Apple 会再次确认）</Text>
+                  <Text style={styles.tapHint}>点选任一方案即可购买（{IS_ANDROID ? 'Google Play' : 'Apple'} 会再次确认）</Text>
                 )}
               </View>
             ) : (
@@ -338,14 +344,18 @@ export default function PaywallModal({ visible, onClose, onSuccess, featureName,
             {/* The buyout is a one-time non-consumable: no trial, no renewal. Showing the
                 auto-renew disclosure on it states billing behaviour that does not apply. */}
             <Text style={styles.disclaimer}>
-              {selected === 'LIFETIME'
-                ? '付款通过 Apple ID 处理。终身会员是一次性买断，付一次永久拥有，不会自动续订、也不会再扣费。'
-                : '付款通过 Apple ID 处理。试用结束后会自动续订，除非在当前周期结束前至少 24 小时取消。删除 App 不会自动取消 Apple 订阅。'}
+              {IS_ANDROID
+                ? (selected === 'LIFETIME'
+                    ? '付款通过 Google Play 处理。终身会员是一次性买断，付一次永久拥有，不会自动续订、也不会再扣费。'
+                    : '付款通过 Google Play 处理。试用结束后会自动续订，除非在当前周期结束前至少 24 小时取消。删除 App 不会自动取消 Google Play 订阅。')
+                : (selected === 'LIFETIME'
+                    ? '付款通过 Apple ID 处理。终身会员是一次性买断，付一次永久拥有，不会自动续订、也不会再扣费。'
+                    : '付款通过 Apple ID 处理。试用结束后会自动续订，除非在当前周期结束前至少 24 小时取消。删除 App 不会自动取消 Apple 订阅。')}
             </Text>
             <View style={styles.linkRow}>
               <TouchableOpacity onPress={handleRestore} disabled={purchasing}><Text style={styles.linkText}>恢复购买</Text></TouchableOpacity>
               <Text style={styles.dot}>·</Text>
-              <TouchableOpacity onPress={() => Linking.openURL('https://apps.apple.com/account/subscriptions')}><Text style={styles.linkText}>管理订阅</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => Linking.openURL(MANAGE_SUBSCRIPTION_URL)}><Text style={styles.linkText}>管理订阅</Text></TouchableOpacity>
             </View>
             <View style={styles.linkRow}>
               <TouchableOpacity onPress={() => setShowPrivacy(true)}><Text style={styles.legalLink}>隐私政策</Text></TouchableOpacity>

@@ -1,7 +1,17 @@
+import { Platform } from 'react-native';
+
 export const APP_VERSION = '1.1.1';
 
 export const REVENUECAT_IOS_KEY = 'appl_cARPBxsGcMQCnDXFWPDSKMGjWkK';
+// Google Play public SDK key (starts with `goog_`). Paste it from RevenueCat → Project settings →
+// Apps → your Google Play app. Empty until then: Android RevenueCat stays unconfigured (the paywall
+// just shows "订阅暂不可用", no crash), and iOS is completely unaffected — iOS only ever reads the key above.
+export const REVENUECAT_ANDROID_KEY = '';
 export const REVENUECAT_ENTITLEMENT_ID = 'NO MORE BETS Pro';
+// Store product IDs. Create the Google Play products with these SAME ids so both stores resolve to the
+// one entitlement above. RevenueCat may report an Android subscription as `<id>:<basePlanId>`; the
+// keyword fallbacks in inferPlanType/pickPackage still resolve the tier, but once the Play products
+// exist you can append the exact `<id>:<basePlanId>` strings here for precise matching.
 export const MONTHLY_PRODUCT_IDS = ['com.nomorebets.app.monthly'];
 export const ANNUAL_PRODUCT_IDS = ['com.nomorebets.app.yearly'];
 export const MUTUAL_PRODUCT_IDS = ['com.nomorebets.app.mutual_yearly'];
@@ -12,7 +22,11 @@ export const ADMIN_EMAILS = ['harrychen168168168@gmail.com'];
 export const ADMIN_LOCAL_PIN = '168168';
 
 export const GOOGLE_IOS_CLIENT_ID = '564022564634-kvotavoqdnqaf9f98arrom80be6qvi34.apps.googleusercontent.com';
-export const GOOGLE_WEB_CLIENT_ID = '';
+// REQUIRED for Google Sign-In on Android: the native lib needs the "Web application" OAuth client id
+// to mint a backend-verifiable idToken. Paste the Web client id from Google Cloud Console, then add
+// that SAME id to Supabase → Auth → Providers → Google → Authorized Client IDs. Empty = the Google
+// button stays hidden on Android (iOS keeps using GOOGLE_IOS_CLIENT_ID and is unaffected).
+export const GOOGLE_WEB_CLIENT_ID = '564022564634-d9bi6ff4pkju1djq1k4ep55edcns6k89.apps.googleusercontent.com';
 
 export const AI_PROXY_URL = 'https://nomorebets-app-production.up.railway.app/ai/chat';
 export const AI_ADDON_10_PRODUCT_ID = 'nomorebets_ai_addon_999';
@@ -24,7 +38,11 @@ export const AI_ADDON_10_PRODUCT_ID = 'nomorebets_ai_addon_999';
 export const SENTRY_DSN = 'https://7dbc0c3ab83f88d5810d03a4efaa8a51@o4511764605698048.ingest.us.sentry.io/4511764619001856';
 
 export const PRIVACY_POLICY_URL = 'https://nezha2capital.com/privacy';
-export const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+// iOS must link Apple's standard EULA; Google Play has no equivalent requirement, so Android links
+// our own hosted terms. (Confirm https://nezha2capital.com/terms is live before the Play listing.)
+export const TERMS_URL = Platform.OS === 'android'
+  ? 'https://nezha2capital.com/terms'
+  : 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
 export const SUPPORT_EMAIL = 'nomorebets@nezha2capital.com';
 
 declare const process: {

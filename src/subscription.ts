@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
-import { AI_PROXY_URL, ANNUAL_PRODUCT_IDS, LIFETIME_LAUNCH_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, REVENUECAT_ENTITLEMENT_ID, REVENUECAT_IOS_KEY } from './config';
+import { AI_PROXY_URL, ANNUAL_PRODUCT_IDS, LIFETIME_LAUNCH_PRODUCT_IDS, LIFETIME_PRODUCT_IDS, MONTHLY_PRODUCT_IDS, MUTUAL_PRODUCT_IDS, REVENUECAT_ANDROID_KEY, REVENUECAT_ENTITLEMENT_ID, REVENUECAT_IOS_KEY } from './config';
 
 // Both buyout SKUs unlock the same thing. Keep them together so the $79.99 promo is matched by the
 // authoritative list rather than by the substring guess further down in inferPlanType.
@@ -9,6 +9,8 @@ const LIFETIME_IDS = [...LIFETIME_PRODUCT_IDS, ...LIFETIME_LAUNCH_PRODUCT_IDS];
 const FALLBACK_ENTITLEMENT_IDS = ['pro', 'premium', 'NO_MORE_BETS_PRO'];
 const ENTITLEMENT_IDS = Array.from(new Set([REVENUECAT_ENTITLEMENT_ID, ...FALLBACK_ENTITLEMENT_IDS].filter(Boolean)));
 const APPLE_SUBSCRIPTION_MANAGE_URL = 'https://apps.apple.com/account/subscriptions';
+const GOOGLE_SUBSCRIPTION_MANAGE_URL = 'https://play.google.com/store/account/subscriptions';
+const STORE_MANAGE_URL = Platform.OS === 'android' ? GOOGLE_SUBSCRIPTION_MANAGE_URL : APPLE_SUBSCRIPTION_MANAGE_URL;
 
 let configured = false;
 
@@ -29,8 +31,11 @@ export type SubscriptionSnapshot = {
 };
 
 export async function configureRevenueCat() {
-  if (Platform.OS !== 'ios' || configured) return;
-  Purchases.configure({ apiKey: REVENUECAT_IOS_KEY });
+  if (configured) return;
+  // iOS keeps its existing key untouched; Android uses the Google key. Web has no native SDK.
+  const apiKey = Platform.OS === 'ios' ? REVENUECAT_IOS_KEY : Platform.OS === 'android' ? REVENUECAT_ANDROID_KEY : '';
+  if (!apiKey) return; // web, or Android before the goog_ key is pasted — leave RevenueCat unconfigured
+  Purchases.configure({ apiKey });
   configured = true;
 }
 
@@ -57,7 +62,7 @@ export function hasActivePro(customerInfo?: CustomerInfo | null) {
 }
 
 export function getSubscriptionManageUrl(customerInfo?: CustomerInfo | null) {
-  return (customerInfo as any)?.managementURL || APPLE_SUBSCRIPTION_MANAGE_URL;
+  return (customerInfo as any)?.managementURL || STORE_MANAGE_URL;
 }
 
 export function inferPlanType(productIdentifier?: string | null): PlanType {
@@ -126,13 +131,13 @@ function resolvePlanFromCustomerInfo(customerInfo: CustomerInfo, entitlement: an
 }
 
 export async function getSubscriptionSnapshot(): Promise<SubscriptionSnapshot> {
-  if (Platform.OS !== 'ios') {
+  if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
     return {
       isPro: false,
       planType: 'none',
       checkedAt: new Date().toISOString(),
-      managementURL: APPLE_SUBSCRIPTION_MANAGE_URL,
-      error: '订阅购买只能在 iOS 真机、TestFlight 或 App Store 环境使用。',
+      managementURL: STORE_MANAGE_URL,
+      error: '订阅购买只能在 iOS/Android 真机或应用商店环境使用。',
     };
   }
   try {
@@ -145,7 +150,7 @@ export async function getSubscriptionSnapshot(): Promise<SubscriptionSnapshot> {
       isPro: false,
       planType: 'none',
       checkedAt: new Date().toISOString(),
-      managementURL: APPLE_SUBSCRIPTION_MANAGE_URL,
+      managementURL: STORE_MANAGE_URL,
       error: getFriendlyPurchaseError(error),
     };
   }
