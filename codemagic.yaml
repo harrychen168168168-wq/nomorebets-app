@@ -244,7 +244,10 @@ workflows:
   android-release:
     name: NoMoreBets Android Release
     max_build_duration: 90
-    instance_type: linux_x2
+    # 用和 iOS 同款机型:linux_x2 不在当前 Codemagic 套餐内(构建会在启动前就报
+    # "selected instance type is not available with the current billing plan")。
+    # macOS 镜像自带 Android SDK / Gradle / JDK,构建 .aab 完全没问题。
+    instance_type: mac_mini_m2
 
     environment:
       groups:
