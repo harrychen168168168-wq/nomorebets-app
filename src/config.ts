@@ -6,7 +6,7 @@ export const REVENUECAT_IOS_KEY = 'appl_cARPBxsGcMQCnDXFWPDSKMGjWkK';
 // Google Play public SDK key (starts with `goog_`). Paste it from RevenueCat → Project settings →
 // Apps → your Google Play app. Empty until then: Android RevenueCat stays unconfigured (the paywall
 // just shows "订阅暂不可用", no crash), and iOS is completely unaffected — iOS only ever reads the key above.
-export const REVENUECAT_ANDROID_KEY = '';
+export const REVENUECAT_ANDROID_KEY = 'goog_dcoCDRtbixuylXugbLsEErqXghn';
 export const REVENUECAT_ENTITLEMENT_ID = 'NO MORE BETS Pro';
 // Store product IDs. Create the Google Play products with these SAME ids so both stores resolve to the
 // one entitlement above. RevenueCat may report an Android subscription as `<id>:<basePlanId>`; the
